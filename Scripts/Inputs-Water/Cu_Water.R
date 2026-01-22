@@ -43,14 +43,8 @@ ggplot(df, aes(ore_grade, TotalWater_m3_tonCu, col = Mine_type2)) +
     legend.box.background = element_rect(colour = "black")
   )
 
-ggsave(
-  "Figures/Deposit/cu-water-use-intensity.png",
-  ggplot2::last_plot(),
-  units = 'cm',
-  dpi = 600,
-  width = 8.7 * 1.5,
-  height = 8.7 * 1.5
-)
+# fmt: skip
+ggsave("Figures/Deposit/cu-water-use-intensity.png",ggplot2::last_plot(),units = 'cm',dpi = 600,width = 8.7 * 1.5,height = 8.7 * 1.5)
 
 ggplot(df, aes(Mine_type, TotalWater_m3_tonCu)) + geom_boxplot()
 
@@ -98,11 +92,10 @@ deposit <- deposit |> filter(!is.na(water))
 
 # add water risk baseline - AWARE factors
 aware <- read.csv("Parameters/Intermediate/Cu_Deposit_aware.csv")
-aware <- aware |>
-  dplyr::select(Name, ID, annual_unspecified, annual_sum) |>
-  # factor from 0.1 to 100
-  # annual demand in m3 per year
-  rename(aware_cf = annual_unspecified, aware_demand = annual_sum)
+# factor from 0.1 to 100
+# annual demand and available in m3 per year
+aware <- aware |> dplyr::select(Basin_ID, Name, ID, aware_cf, aware_demand, aware_available)
+
 
 wb <- deposit %>% left_join(aware) |> mutate(water_footprint = water * aware_cf)
 sum(is.na(wb$water_footprint)) # 0

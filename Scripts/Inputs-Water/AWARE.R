@@ -32,25 +32,49 @@ demand <- read_excel("Inputs/AWARE/AWARE20_Native_CFs.xlsx", sheet = "2019_all_p
 names(demand)
 demand <- demand |> dplyr::select(Basin_ID, annual_sum)
 
+# AMD: availability water minus demand
+amd <- read_excel("Inputs/AWARE/AWARE20_Intermediate_Variables.xlsx", sheet = "AMD_final") # in m3/m2 month
+area <- read_excel("Inputs/AWARE/AWARE20_Intermediate_Variables.xlsx", sheet = "basin_area") # in m2
+amd <- amd |>
+  left_join(area) |>
+  mutate(available_m3 = (Jan + Feb + Mar + Apr + May + Jun + Jul + Aug + Sep + Oct + Nov + Dec) * area) |>
+  dplyr::select(Basin_ID, available_m3)
+sum(amd$available_m3) / 1e9 # 42769 km3 available water annually globally
+
+
 cf_map <- k_sf
 cf_map$Basin_ID <- as.numeric(str_remove(cf_map$Name, "CFs for Basin_ID "))
-cf_map <- left_join(cf_map, cf, by = "Basin_ID") |> left_join(demand)
+cf_map <- left_join(cf_map, cf, by = "Basin_ID") |> left_join(demand) |> left_join(amd)
 head(cf_map)
 
 cf_map |> filter(!is.na(annual_unspecified)) |> nrow() # 9406, same as excel
 
 cf_map <- cf_map |> filter(!is.na(annual_unspecified))
 
+cf_map <- cf_map |> rename(aware_cf = annual_unspecified, aware_demand = annual_sum, aware_available = available_m3)
+
+
+sum(cf_map$aware_available) / 1e9 # 42769 km3 available water annually globally
+save_aux <- cf_map |>
+  st_drop_geometry() |>
+  dplyr::select(Basin_ID, aware_cf, aware_demand, aware_available) |>
+  mutate(full_available = aware_available + aware_demand) |> # add demand so it is full available water
+  mutate(stress = if_else(full_available < 0, 1, aware_demand / full_available)) |>
+  mutate(stress = if_else(aware_demand < 0, 0, stress))
+
+write.csv(save_aux, "Parameters/AWARE_Basin_Stress.csv", row.names = FALSE)
+
+
 # colors for map, to replicate figure frm paper
 cf_map <- cf_map |>
   mutate(
     col = case_when(
-      annual_unspecified <= 0.5 ~ "#0000FF", # blue
-      annual_unspecified < 1 ~ "#006400", # dark green
-      annual_unspecified < 10 ~ "#90EE90", # light green
-      annual_unspecified < 30 ~ "#FFFF00", # yellow
-      annual_unspecified < 60 ~ "#FFA500", # orange
-      annual_unspecified < 95 ~ "#FF7F7F", # light red
+      aware_cf <= 0.5 ~ "#0000FF", # blue
+      aware_cf < 1 ~ "#006400", # dark green
+      aware_cf < 10 ~ "#90EE90", # light green
+      aware_cf < 30 ~ "#FFFF00", # yellow
+      aware_cf < 60 ~ "#FFA500", # orange
+      aware_cf < 95 ~ "#FF7F7F", # light red
       TRUE ~ "#8B0000" # dark red
     )
   )
@@ -64,7 +88,7 @@ leaflet(cf_map) |>
     color = "#000000",
     weight = 0.3,
     fillOpacity = 0.8,
-    popup = paste0("Basin_ID: ", cf_map$Basin_ID, "<br>", "CF_annual_unspecified: ", cf_map$annual_unspecified)
+    popup = paste0("Basin_ID: ", cf_map$Basin_ID, "<br>", "CF_annual_unspecified: ", cf_map$aware_cf)
   )
 
 # LOAD DEPOSIT ID AND DO SPATIAL JOIN ---------
@@ -84,7 +108,7 @@ leaflet(cf_map) |>
     color = "#000000",
     weight = 0.3,
     fillOpacity = 0.8,
-    popup = paste0("Basin_ID: ", cf_map$Basin_ID, "<br>", "CF_annual_unspecified: ", cf_map$annual_unspecified)
+    popup = paste0("Basin_ID: ", cf_map$Basin_ID, "<br>", "CF_annual_unspecified: ", cf_map$aware_cf)
   ) |>
   addCircleMarkers(
     data = pts_cu,
@@ -103,7 +127,7 @@ sum(is.na(pts_join$Basin_ID)) # 0 missing
 
 # 4. minimal output
 names(pts_join)
-out <- pts_join |> select(Basin_ID, Name, ID, annual_unspecified, annual_sum)
+out <- pts_join |> select(Basin_ID, Name, ID, aware_cf, aware_demand, aware_available)
 
 # save
 out <- st_drop_geometry(out)

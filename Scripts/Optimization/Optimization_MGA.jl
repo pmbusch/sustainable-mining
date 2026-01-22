@@ -5,6 +5,7 @@ using DataFrames
 using JuMP
 using Gurobi
 using LinearAlgebra
+using Statistics
 
 # Optimization Run Function
 # Inputs:
@@ -12,9 +13,10 @@ using LinearAlgebra
 # - Deposits parameters
 # - Save folder 
 # - discount rate (default 7%)
-# - cost to not met demand (slack) - historic high price: 68000 USD per LCE
+# - cost to not met demand (slack) - historic high price for each mineral (default is for lithium at 60K per ton LCE)
 # - use an hyperbolic discount rate (default is false)
-function runOptimization(demand,deposit,saveFolder;discount_rate = 0.07,bigM_cost = 100000*5.323/1e3,hyperbolic=false)
+# - run multiobjective to explore solutions with some cost degradation
+function runOptimization(demand,deposit,saveFolder;discount_rate = 0.07,bigM_cost = 100000*5.323/1e3,hyperbolic=false, multiobjective=true)
     
     d_size = size(deposit, 1) 
     t_size = size(demand, 1)
@@ -40,9 +42,20 @@ function runOptimization(demand,deposit,saveFolder;discount_rate = 0.07,bigM_cos
     cost_expansion = deposit[!, :CAPEX_exp] ./ 1e3 # same as extraction
     cost_opening = deposit[!, :CAPEX_opening] # million usd
     
-    # Water footprint
+    # Water parameters
     water_footprint = deposit[!, :water_footprint] ./ 1e3 # divide by 1e6 to million m3, multiply by 1e3 to get to kton
-    
+    water_cons = deposit[!, :water] ./ 1e3 # water consumption, converted to million m3 per kton
+
+    #group deposits by basin (indices are deposit rows)
+    basins = sort(unique(deposit.Basin_ID))
+    deposits_in_basin = Dict(b => findall(deposit.Basin_ID .== b) for b in basins) # b index for basins
+
+    # Water available in million m3 by each basin
+    aware_available = combine(groupby(deposit, :Basin_ID),:aware_available => mean => :aware_available)
+    aware_available.aware_available ./= 1e6 # million m3
+    aware_available.aware_available .= max.(aware_available.aware_available, 0.0) # negative availabilty is treated as no more water
+    aware_available = Dict(r.Basin_ID => r.aware_available for r in eachrow(aware_available))
+
     # Set big M values
     bigM_extract = maximum(max_prod_rate)
     
@@ -126,6 +139,8 @@ function runOptimization(demand,deposit,saveFolder;discount_rate = 0.07,bigM_cos
     @constraint(model, c7[d in 1:d_size], sum(w[d, t] for t in 1:t_size) <= 1)
     # Max Ramp up
     @constraint(model, c8[d in 1:d_size, t in 1:t_size], y[d, t] <= max_ramp_up[d])
+    # Water available per basin
+    @constraint(model, c9[b in basins, t in 1:t_size],sum(x[i, t]*water_cons[i] for i in deposits_in_basin[b]) <= aware_available[b])
     
     # Save results prior to MGA for water
     optimize!(model)
@@ -172,84 +187,125 @@ function runOptimization(demand,deposit,saveFolder;discount_rate = 0.07,bigM_cos
     url_file = "Results/Optimization/"* saveFolder *"/Base_slack.csv"
     CSV.write(url_file, df_z)
 
-    # Save cost and water
+    # Save cost and water (METRICS)
     cost = sum(cost_extraction[d,t] * x_values[d,t] +
             cost_expansion[d,t]  * y_values[d,t] +
             cost_opening[d,t]    * w_values[d,t] for d = 1:d_size, t = 1:t_size)+
             sum(bigM_cost[t] * z_values[t] for t in 1:t_size)
 
-    water = sum(water_footprint[d] * x_values[d, t] for d in 1:d_size, t in 1:t_size)
+    water = sum(water_cons[d] * x_values[d, t] for d in 1:d_size, t in 1:t_size)
+    water_impact = sum(water_footprint[d] * x_values[d, t] for d in 1:d_size, t in 1:t_size)
 
     mines_opened = sum(w_values[d,t] for d = 1:d_size, t = 1:t_size)
     url_file = "Results/Optimization/"* saveFolder *"/Metrics.csv"
     inputs_text = DataFrame([
         ("Cost", cost),
         ("Water", water),
+        ("Water impact", water_impact),
         ("Openings", mines_opened),
         ], [:Parameter, :Value])
     CSV.write(url_file, inputs_text)
 
-    # MGA water 
-    opt_val = objective_value(model)
-    # new objective
-    @objective(model, Min,sum(water_footprint[d] * x[d, t] for d in 1:d_size, t in 1:t_size))
+    # Get shadow prices (dual variables)
+    m_dual, ref = copy_model(model) # copy model to use it later
+    relax_integrality(m_dual) 
+    for idx in eachindex(w)
+        fix(ref[w[idx]], value(w[idx]); force = true) # fix binaries (no longer variables)
+    end
+    set_optimizer(m_dual, Gurobi.Optimizer)
+    optimize!(m_dual) # solve linear version
 
-    # cost degradation
-    for epsilon_cost in [0.1, 0.05, 0.03, 0.01]
-        # Cost constraint
-        @constraint(model,
-            sum(cost_extraction[d,t] * x[d,t] +
-                cost_expansion[d,t]  * y[d,t] +
-                cost_opening[d,t]    * w[d,t]
-                for d = 1:d_size, t = 1:t_size)+
-                    sum(bigM_cost[t] * z[t] for t in 1:t_size) <= 
-                    (1 + epsilon_cost) * opt_val
-        )
- 
-        optimize!(model)
+    # Save duals for basins
+    df_dual = DataFrame(
+        Basin_ID = Int[],
+        t        = Int[],
+        shadow   = Float64[]
+    )
+    for b in basins, t in 1:t_size
+        con = ref[c9[b, t]]
+        push!(df_dual, (b, t, shadow_price(con))) # unit is in USD per m3 of extra water
+    end
+    url_file = "Results/Optimization/"* saveFolder *"/SP_Basin.csv"
+    CSV.write(url_file, df_dual)
 
-        # Save decision variables
-        # vectorize
-        x_values  = [value(x[d,t])  for d in 1:d_size, t in 1:t_size]
-        y_values  = [value(y[d,t])  for d in 1:d_size, t in 1:t_size]
-        w_values  = [value(w[d,t])  for d in 1:d_size, t in 1:t_size]
-        z_values  = [value(z[t])    for t in 1:t_size]
+    # Save duals for demand
+    df_dual = DataFrame(
+        t        = Int[],
+        shadow_demand   = Float64[]
+    )
+    for t in 1:t_size
+        con = ref[c2[t]]
+        push!(df_dual, (t, shadow_price(con))) # in million USD per kton
+    end
+    url_file = "Results/Optimization/"* saveFolder *"/SP_Demand.csv" 
+    CSV.write(url_file, df_dual)
 
-    # start year 
-        years = 2025:(2024 + t_size)
+    # Run multiobjective to minimize water impact
+    if(multiobjective)
+        # MGA water 
+        opt_val = objective_value(model)
+        # new objective
+        @objective(model, Min,sum(water_footprint[d] * x[d, t] for d in 1:d_size, t in 1:t_size))
+    
+        # cost degradation
+        for epsilon_cost in [0.15,0.125,0.1,0.08,0.06,0.05,0.04,0.03,0.02,0.01,0.005]
+        # for epsilon_cost in [0.1, 0.05, 0.03, 0.01]
+            # Cost constraint
+            @constraint(model,
+                sum(cost_extraction[d,t] * x[d,t] +
+                    cost_expansion[d,t]  * y[d,t] +
+                    cost_opening[d,t]    * w[d,t]
+                    for d = 1:d_size, t = 1:t_size)+
+                        sum(bigM_cost[t] * z[t] for t in 1:t_size) <= 
+                        (1 + epsilon_cost) * opt_val
+            )
+     
+            optimize!(model)
+    
+            # Save decision variables
+            # vectorize
+            x_values  = [value(x[d,t])  for d in 1:d_size, t in 1:t_size]
+            y_values  = [value(y[d,t])  for d in 1:d_size, t in 1:t_size]
+            w_values  = [value(w[d,t])  for d in 1:d_size, t in 1:t_size]
+            z_values  = [value(z[t])    for t in 1:t_size]
+    
+        # start year 
+            years = 2025:(2024 + t_size)
+    
+            df_results = DataFrame(
+                d = repeat(deposit_name, outer = t_size),
+                t = repeat(years,inner = d_size),
+                ktons_extracted = vec(x_values),
+                capacity_added  = vec(y_values),
+                mine_opened     = vec(w_values)
+            )
+    
+            # CSV save
+            url_results = "Results/Optimization/" * saveFolder * "/Water" * string(round(Int,epsilon_cost* 100)) * ".csv"
+            CSV.write(url_results, df_results)
+    
+            # Slack
+            df_z = DataFrame(variable="demand_unmet",t = 2025:(t_size+2024),value = vec(z_values))
+            url_file = "Results/Optimization/"* saveFolder *"/Water"* string(round(Int,epsilon_cost* 100))*"_slack.csv"
+            CSV.write(url_file, df_z)
+    
+            # Save cost and water
+            cost = sum(cost_extraction[d,t] * x_values[d,t] +
+                    cost_expansion[d,t]  * y_values[d,t] +
+                    cost_opening[d,t]    * w_values[d,t] for d = 1:d_size, t = 1:t_size)+
+                    sum(bigM_cost[t] * z_values[t] for t in 1:t_size)
+            water = sum(water_cons[d] * x_values[d, t] for d in 1:d_size, t in 1:t_size)
+            water_impact = sum(water_footprint[d] * x_values[d, t] for d in 1:d_size, t in 1:t_size)
+            mines_opened = sum(w_values[d,t] for d = 1:d_size, t = 1:t_size)
 
-        df_results = DataFrame(
-            d = repeat(deposit_name, outer = t_size),
-            t = repeat(years,inner = d_size),
-            ktons_extracted = vec(x_values),
-            capacity_added  = vec(y_values),
-            mine_opened     = vec(w_values)
-        )
-
-        # CSV save
-        url_results = "Results/Optimization/" * saveFolder * "/Water" * string(round(Int,epsilon_cost* 100)) * ".csv"
-        CSV.write(url_results, df_results)
-
-        # Slack
-        df_z = DataFrame(variable="demand_unmet",t = 2025:(t_size+2024),value = vec(z_values))
-        url_file = "Results/Optimization/"* saveFolder *"/Water"* string(round(Int,epsilon_cost* 100))*"_slack.csv"
-        CSV.write(url_file, df_z)
-
-        # Save cost and water
-        cost = sum(cost_extraction[d,t] * x_values[d,t] +
-                cost_expansion[d,t]  * y_values[d,t] +
-                cost_opening[d,t]    * w_values[d,t] for d = 1:d_size, t = 1:t_size)+
-                sum(bigM_cost[t] * z_values[t] for t in 1:t_size)
-
-        water = sum(water_footprint[d] * x_values[d, t] for d in 1:d_size, t in 1:t_size)
-
-        mines_opened = sum(w_values[d,t] for d = 1:d_size, t = 1:t_size)
-        url_file = "Results/Optimization/"* saveFolder *"/Metrics"* string(round(Int,epsilon_cost*100))*".csv"
-        inputs_text = DataFrame([
-            ("Cost", cost),
-            ("Water", water),
-            ("Openings", mines_opened),
-            ], [:Parameter, :Value])
-        CSV.write(url_file, inputs_text)
-    end 
+            url_file = "Results/Optimization/"* saveFolder *"/Metrics"* string(round(Int,epsilon_cost*100))*".csv"
+            inputs_text = DataFrame([
+                ("Cost", cost),
+                ("Water", water),
+                ("Water impact", water_impact),
+                ("Openings", mines_opened),
+                ], [:Parameter, :Value])
+            CSV.write(url_file, inputs_text)
+        end 
+    end
 end
