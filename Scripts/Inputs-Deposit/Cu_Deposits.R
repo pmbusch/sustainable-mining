@@ -414,7 +414,8 @@ df_save <- df |>
     OPEX,
     OPEX_source,
     CAPEX_opening,
-    CAPEX_exp
+    CAPEX_exp,
+    delay_years
   ) |>
   mutate(reserves = if_else(is.na(reserves), 0, reserves))
 

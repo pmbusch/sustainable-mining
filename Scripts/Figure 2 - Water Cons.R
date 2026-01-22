@@ -58,7 +58,8 @@ ggplot(data_fig, aes(t, water_m3, col = abbr, group = key)) +
   theme_bw() +
   coord_cartesian(expand = F) +
   xlim(2025, 2053) +
-  labs(x = "Year", y = "Annual Water Footprint (billion m3)", col = "") +
+  ylim(0, 190) +
+  labs(x = "Year", y = expression("Freshwater Impact [billion " ~ m^3 * ~" per year]"), col = "") +
   theme(legend.position = "none", panel.grid = element_blank())
 
 # url_save <- "Figures/water_ts.png"
