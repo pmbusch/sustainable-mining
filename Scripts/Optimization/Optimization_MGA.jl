@@ -28,7 +28,7 @@ function runOptimization(demand,deposit,saveFolder;discount_rate = 0.07,bigM_cos
     deposit_name = deposit[!, :Name]
     # Reserves
     reserve = deposit[!, :reserves] ./ 1e3 # to ktons
-    resources = deposit[!, :resources] .* 0.8 ./ 1e3 # to ktons, 80 % recovery rate
+    resources = deposit[!, :resources] .* 0.7 ./ 1e3 # to ktons, 70 % recovery rate
     # Dynamics
     cap2025 = deposit[!, :cap2025] ./ 1e3 # to ktons
     
