@@ -15,20 +15,16 @@ cf_map <- left_join(cf_map, aware_basin, by = "Basin_ID")
 head(cf_map)
 
 ## Mineral deposits with water use ----------
-cu <- read.csv("Parameters/Cu_Deposit.csv") |> mutate(Mineral = "Copper")
-li <- read.csv("Parameters/Deposit_water.csv") |>
-  rename(LATITUDE = Latitude, LONGITUDE = Longitude, resources = all_resource) |>
-  mutate(Mineral = "Lithium")
-
-# join
-deps <- rbind(
-  dplyr::select(cu, LATITUDE, LONGITUDE, resources, Mineral),
-  dplyr::select(li, LATITUDE, LONGITUDE, resources, Mineral)
-) |>
+deps <- read.csv("Parameters/Deposits_Map.csv")
+deps <- deps |>
   mutate(resources = resources / 1e6) |>
+  mutate(Mineral = factor(Mineral, levels = c("Copper", "Nickel", "Cobalt", "Lithium"))) %>%
   arrange((Mineral))
 table(deps$Mineral)
 range(deps$resources)
+ggplot(deps, aes(x = resources)) + geom_histogram(bins = 500)
+
+# FIGURE ------------
 
 map1 <- map_data('world')
 p1 <- ggplot(deps) +
@@ -38,16 +34,19 @@ p1 <- ggplot(deps) +
   # Water stress map
   geom_sf(data = cf_map, aes(fill = stress), color = "grey30", linewidth = 0.1) +
   # fmt: skip
-  scale_fill_distiller(name="Water Stress",palette = "OrRd", na.value = "white", direction = 1, labels = scales::percent, trans = "sqrt",
+  # scale_fill_distiller(
+  scale_fill_gradientn(
+    name="Water Stress",na.value = "white", labels = scales::percent, trans = "sqrt",
+  # palette = "OrRd", direction = 1,
+  colours = c("white", "#FEE08B", "#D73027"),values  = rescale(c(0, 0.5, 3.5)), 
  guide = guide_colorbar(direction = "horizontal",
                          barwidth = unit(6, "cm"),
                          barheight = unit(0.25, "cm"),
                          order = 1)) +
   ggnewscale::new_scale_fill() +
   # Deposits
-  geom_point(aes(x = LONGITUDE, y = LATITUDE,size=resources,fill=Mineral),alpha = 0.7,  shape  = 21, colour = "black", stroke = 0.25) +
   scale_fill_manual(
-    values = c("Lithium" = "#1f78b4", "Copper" = "#33a02c"),
+    values = c("Lithium" = "#fb9a99", "Copper" = "#33a02c", "Nickel" = "#525252", "Cobalt" = "#6a3d9a"),
     guide = guide_legend(direction = "horizontal", nrow = 1)
   ) +
   coord_sf(xlim = c(-140, 160), ylim = c(-60, 70)) +
@@ -55,11 +54,11 @@ p1 <- ggplot(deps) +
   scale_x_continuous(breaks = NULL, name = "") +
   scale_size_continuous(
     trans = "sqrt",
-    breaks = c(1, 10, 25, 50, 100, 150),
-    range = c(1, 3.5), # reduce size of painted points
+    breaks = c(0.1, 1, 10, 25, 50, 100, 150),
+    range = c(0.3, 3.5), # reduce size of painted points
     guide = guide_legend(direction = "horizontal", nrow = 1, byrow = TRUE, title.position = "left", order = 2)
   ) +
-  labs(title = "(a)", size = "Resources, million tons") +
+  labs(title = "(a) Deposits (main mineral)", size = "Resources, million tons") +
   theme(
     panel.grid = element_blank(),
     legend.position = c(0.5, 0.12),
@@ -77,21 +76,28 @@ p1
 
 # Insets now
 library(patchwork)
-mk_inset <- function(xlim, ylim, tag = NULL) {
-  p1 + coord_sf(xlim = xlim, ylim = ylim, expand = FALSE) + theme(legend.position = "none") + labs(title = tag)
+mk_inset <- function(xlim, ylim, tag, data_) {
+  p1 +
+    geom_point(data=data_,aes(x = LONGITUDE, y = LATITUDE,size=resources,fill=Mineral),alpha = 0.7,  shape  = 21, colour = "black", stroke = 0.25) +
+    coord_sf(xlim = xlim, ylim = ylim, expand = FALSE) +
+    theme(legend.position = "none") +
+    labs(title = tag)
 }
 
-p_northAmerica <- mk_inset(c(-120, -90), c(25, 45), "(b) North America")
-p_southAmerica <- mk_inset(c(-85, -65), c(-35, 0), "(c) South America")
-p_Africa <- mk_inset(c(20, 40), c(-20, 0), "(d) Africa")
-p_Australia <- mk_inset(c(110, 155), c(-45, -10), "(e) Australia")
+# fmt: skip
+p_copper1 <- mk_inset(c(-130, -100), c(25, 55), "(b) Copper (incl. co-products)", filter(deps, Mineral == "Copper"))
+p_copper2 <- mk_inset(c(-85, -65), c(-35, 5), "", filter(deps, Mineral == "Copper"))
+p_lithium <- mk_inset(c(-75, -65), c(-30, -13), "(c) Lithium", filter(deps, PRIMARY_COMMODITY == "Lithium"))
+p_cobalt <- mk_inset(c(20, 32), c(-15, -5), "(d) Cobalt (incl. co-products)", filter(deps, Mineral == "Cobalt"))
+p_nickel <- mk_inset(c(110, 155), c(-44, 20), "(e) Nickel (incl. co-products)", filter(deps, Mineral == "Nickel"))
 
 boxes_sf <- tibble(
-  tag = c("b", "c", "d", "e"),
-  xmin = c(-120, -85, 20, 110),
-  xmax = c(-90, -65, 40, 155),
-  ymin = c(25, -35, -20, -45),
-  ymax = c(45, 0, 0, -10)
+  tag = c("b", "", "c", "d", "e"),
+  Mineral = c("Copper", "Copper", "Lithium", "Cobalt", "Nickel"),
+  xmin = c(-130, -85, -75, 20, 110),
+  xmax = c(-100, -65, -65, 32, 155),
+  ymin = c(25, -35, -30, -15, -44),
+  ymax = c(55, 5, -13, -5, 20)
 ) %>%
   rowwise() %>%
   mutate(geometry = st_as_sfc(st_bbox(c(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), crs = st_crs(cf_map)))) %>%
@@ -99,14 +105,19 @@ boxes_sf <- tibble(
   st_as_sf()
 
 p_big <- p1 +
-  geom_sf(data = boxes_sf, fill = NA, color = "black", linewidth = 0.5, linetype = "dashed") +
+  geom_point(data=filter(deps,PRIMARY_COMMODITY==Mineral),aes(x = LONGITUDE, y = LATITUDE,size=resources,fill=Mineral),alpha = 0.7,  shape  = 21, colour = "black", stroke = 0.25) +
+  geom_sf(data = boxes_sf, fill = NA, aes(color = Mineral), linewidth = 0.5, linetype = "dashed") +
+  scale_color_manual(
+    values = c("Lithium" = "#fb9a99", "Copper" = "#33a02c", "Nickel" = "#525252", "Cobalt" = "#6a3d9a"),
+    guide = "none"
+  ) +
   coord_sf(xlim = c(-140, 160), ylim = c(-60, 70))
 
-p_big /
-  wrap_plots(list(p_northAmerica, p_southAmerica, p_Africa, p_Australia), nrow = 1) +
-  plot_layout(heights = c(2, 1))
+p_big / wrap_plots(list(p_copper1, p_copper2, p_lithium, p_cobalt, p_nickel), nrow = 1) + plot_layout(heights = c(2, 1))
 
 # fmt: skip
 ggsave("Figures/Figure1.png", ggplot2::last_plot(),units = 'cm', dpi = 1200, width = 8.7*3, height = 8.7*2)
-# ggsave("Figures/Figure1.svg", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
-# ggsave("Figures/Figure1.pdf", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
+ggsave("Figures/Figure1.svg", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
+ggsave("Figures/Figure1.pdf", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
+
+# EoF

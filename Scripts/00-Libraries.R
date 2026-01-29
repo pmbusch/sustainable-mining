@@ -31,14 +31,7 @@ lapply(list_libraries, require, character.only = TRUE)
 
 rm(list_libraries)
 
-theme_set(
-  theme_bw(11) +
-    theme(
-      panel.grid.major = element_blank(),
-      panel.grid.minor = element_blank(),
-      axis.title.y = element_text(angle = 0)
-    )
-)
+source("Scripts/00b-Theme.R", encoding = "UTF-8")
 
 # Functions -----
 # load all required functions automatically
