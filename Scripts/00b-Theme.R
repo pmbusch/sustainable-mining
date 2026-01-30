@@ -27,7 +27,7 @@ theme_pb <- function(preset = c("small", "wide"), base_family = "", text_col = "
       text = ggplot2::element_text(colour = text_col, family = base_family),
 
       # Titles and tags
-      plot.title = ggplot2::element_text(size = sz_plot_title, face = "bold", hjust = 0.5, colour = text_col),
+      plot.title = ggplot2::element_text(size = sz_plot_title, face = "bold", colour = text_col),
       plot.subtitle = ggplot2::element_text(size = base_size, hjust = 0),
       plot.caption = ggplot2::element_text(size = base_size - 2, hjust = 1, colour = text_col, lineheight = 0.9),
       plot.tag = ggplot2::element_text(size = sz_plot_tag, face = "bold"),

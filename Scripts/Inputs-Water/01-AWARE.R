@@ -5,6 +5,8 @@
 
 source('Scripts/00-Libraries.R', encoding = 'UTF-8')
 
+showMaps <- F
+# showMaps <- T
 
 # LOAD AWARE GEOSPATIAL DATA ---------
 
@@ -81,48 +83,54 @@ cf_map <- cf_map |>
 
 
 library(leaflet)
-leaflet(cf_map) |>
-  addTiles() |>
-  addPolygons(
-    fillColor = ~col,
-    color = "#000000",
-    weight = 0.3,
-    fillOpacity = 0.8,
-    popup = paste0("Basin_ID: ", cf_map$Basin_ID, "<br>", "CF_annual_unspecified: ", cf_map$aware_cf)
-  )
+
+if (showMaps) {
+  leaflet(cf_map) |>
+    addTiles() |>
+    addPolygons(
+      fillColor = ~col,
+      color = "#000000",
+      weight = 0.3,
+      fillOpacity = 0.8,
+      popup = paste0("Basin_ID: ", cf_map$Basin_ID, "<br>", "CF_annual_unspecified: ", cf_map$aware_cf)
+    )
+}
 
 # LOAD DEPOSIT ID AND DO SPATIAL JOIN ---------
 
-cu_dep <- read.csv("Parameters/Intermediate/Cu_Deposit_SP.csv")
-names(cu_dep)
-cu_dep <- cu_dep |> dplyr::select(Name, ID, LATITUDE, LONGITUDE)
+dep <- read.csv("Parameters/Intermediate/CuNiCo_Deposit_SP.csv")
+names(dep)
+dep <- dep |> dplyr::select(Name, ID, LATITUDE, LONGITUDE)
 
 # convert to spatial points
-pts_cu <- st_as_sf(cu_dep, coords = c("LONGITUDE", "LATITUDE"), crs = 4326)
+pts_dep <- st_as_sf(dep, coords = c("LONGITUDE", "LATITUDE"), crs = 4326)
 
-# Map with deposits
-leaflet(cf_map) |>
-  addTiles() |>
-  addPolygons(
-    fillColor = ~col,
-    color = "#000000",
-    weight = 0.3,
-    fillOpacity = 0.8,
-    popup = paste0("Basin_ID: ", cf_map$Basin_ID, "<br>", "CF_annual_unspecified: ", cf_map$aware_cf)
-  ) |>
-  addCircleMarkers(
-    data = pts_cu,
-    radius = 4,
-    color = "red",
-    fillColor = "red",
-    fillOpacity = 1,
-    stroke = FALSE,
-    popup = ~ paste0("Name: ", pts_cu$Name)
-  )
+
+if (showMaps) {
+  # Map with deposits
+  leaflet(cf_map) |>
+    addTiles() |>
+    addPolygons(
+      fillColor = ~col,
+      color = "#000000",
+      weight = 0.3,
+      fillOpacity = 0.8,
+      popup = paste0("Basin_ID: ", cf_map$Basin_ID, "<br>", "CF_annual_unspecified: ", cf_map$aware_cf)
+    ) |>
+    addCircleMarkers(
+      data = pts_dep,
+      radius = 4,
+      color = "red",
+      fillColor = "red",
+      fillOpacity = 1,
+      stroke = FALSE,
+      popup = ~ paste0("Name: ", pts_dep$Name)
+    )
+}
 
 # spatial join based on nearest feature
-idx <- st_nearest_feature(pts_cu, cf_map)
-pts_join <- cbind(pts_cu, st_drop_geometry(cf_map[idx, ]))
+idx <- st_nearest_feature(pts_dep, cf_map)
+pts_join <- cbind(pts_dep, st_drop_geometry(cf_map[idx, ]))
 sum(is.na(pts_join$Basin_ID)) # 0 missing
 
 # 4. minimal output
@@ -132,6 +140,7 @@ out <- pts_join |> select(Basin_ID, Name, ID, aware_cf, aware_demand, aware_avai
 # save
 out <- st_drop_geometry(out)
 head(out)
-write.csv(out, "Parameters/Intermediate/Cu_Deposit_aware.csv", row.names = FALSE)
+nrow(out) # 1630
+write.csv(out, "Parameters/Intermediate/CuNiCo_Deposit_aware.csv", row.names = FALSE)
 
 # EoF

@@ -1,5 +1,6 @@
 # Venn diagram showing coproduction occurance between active deposits
 # Source: S&P Data
+# Use pre-processed deposit dataset
 # PBH Jan 2026
 
 source('Scripts/00-Libraries.R', encoding = 'UTF-8')
@@ -7,40 +8,23 @@ source('Scripts/00-Libraries.R', encoding = 'UTF-8')
 
 # LOAD AND MERGE -----------
 
-cu1 <- read_excel('Inputs/SP/SP_Copper_28Jan2026_USA_Europe.xls', skip = 3, col_types = "text") |> slice(-1, -2)
-cu2 <- read_excel('Inputs/SP/SP_Copper_28Jan2026_ROW.xls', skip = 3, col_types = "text") |> slice(-1, -2)
-ni <- read_excel('Inputs/SP/SP_Nickel_28Jan2026.xls', skip = 3, col_types = "text") |> slice(-1, -2)
-co <- read_excel('Inputs/SP/SP_Cobalt_28Jan2026.xls', skip = 3, col_types = "text") |> slice(-1, -2)
+df <- read.csv("Parameters/CuNiCo_Deposit.csv")
 
-# Merge all and delete duplicas by deposit ID
-df <- rbind(
-  mutate(cu1, Database = "Copper"),
-  mutate(cu2, Database = "Copper"),
-  mutate(ni, Database = "Nickel"),
-  mutate(co, Database = "Cobalt")
-) |>
-  dplyr::select(PROP_NAME, PROP_ID, PRIMARY_COMMODITY, ACTV_STATUS, CONTAINED_R_AND_R_PCT_TONNE, Database)
+names(df)
 
-# Filter by status
 df <- df |>
-  filter(
-    ACTV_STATUS %in% c("Active", "On Hold Awaiting Financing", "On Hold Awaiting Higher Prices", "Temporarily On Hold")
-  ) |>
   mutate(
     PRIMARY_COMMODITY = if_else(PRIMARY_COMMODITY %in% c("Copper", "Nickel", "Cobalt"), PRIMARY_COMMODITY, "Other")
-  ) |>
-  rename(resources = CONTAINED_R_AND_R_PCT_TONNE) |> # Resources including reserves
-  mutate(resources = as.numeric(resources)) |>
-  filter(!is.na(resources))
-table(df$PRIMARY_COMMODITY)
+  )
+
 
 # Figure - Venn Diagram -----------
 
 library(ggVennDiagram)
 
-# Get a datafame by PROP_ID indicating if it exists in any database with other coproduct...
-prop_db <- df %>% distinct(PROP_ID, Database, PRIMARY_COMMODITY)
-prop_ids <- df %>% distinct(PROP_ID)
+# Database is already on format one deposit per row, with columns indicated presence of minerals
+prop_db <- df %>% distinct(ID, , PRIMARY_COMMODITY)
+prop_ids <- df %>% distinct(ID)
 prop_presence <- prop_ids %>%
   left_join(
     prop_db %>% filter(Database == "Copper") %>% distinct(PROP_ID) %>% mutate(in_copper_db = TRUE),
@@ -60,23 +44,37 @@ prop_presence <- prop_ids %>%
   ) %>%
   mutate(across(starts_with("in_"), ~ replace_na(.x, FALSE)))
 
+prop_presence <- df |>
+  mutate(
+    in_copper_db = grade_resource_Copper > 0,
+    in_nickel_db = grade_resource_Nickel > 0,
+    in_cobalt_db = grade_resource_Cobalt > 0,
+    in_other_db = PRIMARY_COMMODITY == "Other"
+  )
+
 sets <- list(
-  Copper = prop_presence %>% filter(in_copper_db) %>% pull(PROP_ID),
-  Nickel = prop_presence %>% filter(in_nickel_db) %>% pull(PROP_ID),
-  Cobalt = prop_presence %>% filter(in_cobalt_db) %>% pull(PROP_ID),
-  Other = prop_presence %>% filter(in_other_db) %>% pull(PROP_ID)
+  Copper = prop_presence %>% filter(in_copper_db) %>% pull(ID),
+  Nickel = prop_presence %>% filter(in_nickel_db) %>% pull(ID),
+  Cobalt = prop_presence %>% filter(in_cobalt_db) %>% pull(ID),
+  Other = prop_presence %>% filter(in_other_db) %>% pull(ID)
 )
 
 ggVennDiagram(set_names(sets, rep("", length(sets))), label_alpha = 0, label = "count", set_size = 3.5) +
   annotate(
     "text",
-    x = c(0.8, 2, 4, 5) * 0.18,
-    y = c(2.7, 2.95, 2.95, 2.7) * 0.3,
+    x = c(0.144, 0.36, 0.72, 0.9),
+    y = c(.81, .885, .885, .81),
     label = paste0(c("Copper", "Nickel", "Cobalt", "Other"), "\n(n=", lengths(sets), ")"),
     size = 4,
     lineheight = 0.8
   ) +
   annotate("text", x = 0.41, y = 0.62, label = "Cu-Ni-Co", size = 3) +
+  annotate("text", x = 0.2, y = 0.56, label = "Cu", size = 3) +
+  annotate("text", x = 0.32, y = 0.46, label = "Cu-Co", size = 3) +
+  annotate("text", x = 0.31, y = 0.7, label = "Cu-Ni", size = 3) +
+  annotate("text", x = 0.36, y = 0.8, label = "Ni", size = 3) +
+  annotate("text", x = 0.5, y = 0.72, label = "Ni-Co", size = 3) +
+  annotate("text", x = 0.63, y = 0.8, label = "Co", size = 3) +
   scale_fill_gradient(low = "grey90", high = "red") +
   theme(legend.position = "none", text = element_text(hjust = 1))
 

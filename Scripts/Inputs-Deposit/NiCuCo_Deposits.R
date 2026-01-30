@@ -36,6 +36,8 @@ df <- df |>
   mutate(resources = as.numeric(resources)) |>
   rename(grade_resource = GRD_R_AND_R_PCT_TONNE...30) |> # Resources including reserves
   mutate(grade_resource = as.numeric(grade_resource)) |>
+  rename(resources_ore = R_AND_R_ORE_TONNAGE) |>
+  mutate(resources_ore = as.numeric(resources_ore)) |> # tonnes ore
   rename(prod2025 = COMMODITY_PRODUCTION_TONNE_BY_PERIOD) |> # tons/year
   mutate(prod2025 = as.numeric(prod2025)) |>
   rename(prodCap = PRODUCTION_CAPACITY_TONNE) |> # tons /year
@@ -185,9 +187,10 @@ df <- df |>
   ) |>
   filter(!is.na(resources)) |>
   filter(!is.na(grade_resource)) |>
+  filter(!is.na(resources_ore)) |>
   filter(ID != 88695) # specific mine in the ocean and not showing on mine type
 
-nrow(df) # 2056, but duplicated entries due to multiple minerals
+nrow(df) # 2053, but duplicated entries due to multiple minerals
 
 # Table for data completeness
 df |>
@@ -652,8 +655,8 @@ df <- df |>
     )
   )
 
-# AGGREGATE: 1 ROW = 1 DEPOSIT ---------------
 
+# AGGREGATE: 1 ROW = 1 DEPOSIT ---------------
 names(df)
 df_save <- df |>
   dplyr::select(
@@ -670,6 +673,7 @@ df_save <- df |>
     grade_reserves, # in % 0 to 100
     resources, # tons
     grade_resource, # in % 0 to 100
+    resources_ore, # tons ore
     ore_processed, # tons ore processed in 2025
     cap2025, # tons ore per year
     cap2026,
@@ -691,8 +695,9 @@ df_save <- df |>
   ) |>
   mutate(reserves = if_else(is.na(reserves), 0, reserves))
 
-# spread
+# spread  and fill na
 df_save <- df_save |>
+  mutate(across(all_of(c("grade_reserves", "grade_head", "ore_processed")), ~ replace_na(.x, 0))) |>
   pivot_wider(
     names_from = Mineral,
     values_from = c(reserves, grade_reserves, resources, grade_resource, grade_head),
@@ -700,8 +705,28 @@ df_save <- df_save |>
     values_fill = 0
   )
 
+
 nrow(df_save) # 1630 deposits
 table(df_save$PRIMARY_COMMODITY) |> sort(decreasing = T)
+
+# Do resources, ore and grades make sense? NOT ALWAYS
+df_save |>
+  mutate(est_cu = resources_ore * grade_resource_Copper / 100, est_ni = resources_ore * grade_resource_Nickel / 100) |>
+  mutate(abs_diff_cu = abs(est_cu - resources_Copper), abs_diff_ni = abs(est_ni - resources_Nickel)) |>
+  dplyr::select(Name, ID, est_cu, resources_Copper, abs_diff_cu, est_ni, resources_Nickel, abs_diff_ni) |>
+  arrange(desc(abs_diff_ni))
+
+# Not really, approach, fix grade based on ore and resources
+# These approach assumes resources are correct
+df_save <- df_save |>
+  mutate(
+    grade_resource_Copper = if_else(resources_Copper > 0, (resources_Copper / resources_ore) * 100, 0),
+    grade_resource_Nickel = if_else(resources_Nickel > 0, (resources_Nickel / resources_ore) * 100, 0),
+    grade_resource_Cobalt = if_else(resources_Cobalt > 0, (resources_Cobalt / resources_ore) * 100, 0)
+  )
+
+# Minor corrections
+# df_save |> dplyr::select(grade_resource_Copper,grade_resource_Nickel,grade_resource_Cobalt) |> skimr::skim()
 
 df_save <- df_save |> arrange(ID)
 # SAVE ---------
