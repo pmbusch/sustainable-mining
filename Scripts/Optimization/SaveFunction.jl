@@ -1,7 +1,13 @@
 using JuMP, DataFrames, CSV
 
 # Common function to abstract code do to multiple results savings
-function save_results_from_model!(sr_model::JuMP.Model; sr_saveFolder::AbstractString, sr_Optname::AbstractString)
+function save_results_from_model!(
+    sr_model::JuMP.Model;
+    sr_saveFolder::AbstractString,
+    sr_Optname::AbstractString,
+    sr_ids::AbstractVector,
+    sr_names::AbstractVector{<:AbstractString},
+)
     outdir = joinpath("Results", "Optimization", sr_saveFolder)
 
     # Get references of variables and expressions inside the model
@@ -11,6 +17,7 @@ function save_results_from_model!(sr_model::JuMP.Model; sr_saveFolder::AbstractS
     z_cu = sr_model[:z_cu]
     z_ni = sr_model[:z_ni]
     z_co = sr_model[:z_co]
+    z_li = sr_model[:z_li]
 
     cost_expr = sr_model[:cost_expr]
     water_expr = sr_model[:water_expr]
@@ -28,7 +35,8 @@ function save_results_from_model!(sr_model::JuMP.Model; sr_saveFolder::AbstractS
 
     # --- Base ---
     df_base = DataFrame(;
-        d=repeat(1:d_size; outer=t_size),
+        Name=repeat(sr_names; outer=t_size),
+        ID=repeat(sr_ids; outer=t_size),
         t=repeat(years; inner=d_size),
         ktons_extracted=vec(x_values),
         capacity_added=vec(y_values),
@@ -38,7 +46,12 @@ function save_results_from_model!(sr_model::JuMP.Model; sr_saveFolder::AbstractS
 
     # --- Slack ---
     df_slack = DataFrame(;
-        variable="demand_unmet", t=years, slack_cu=value.(z_cu), slack_ni=value.(z_ni), slack_co=value.(z_co)
+        variable="demand_unmet",
+        t=years,
+        slack_cu=value.(z_cu),
+        slack_ni=value.(z_ni),
+        slack_co=value.(z_co),
+        slack_li=value.(z_li),
     )
     CSV.write(joinpath(outdir, sr_Optname * "_Slack.csv"), df_slack)
 

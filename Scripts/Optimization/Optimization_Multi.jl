@@ -31,7 +31,6 @@ function runOptimization(
     bigM_cost_Cu=14000 * 1.5 / 1e3,
     bigM_cost_Ni=48000 * 1.5 / 1e3,
     bigM_cost_Co=82000 * 1.5 / 1e3,
-    recovery_rate=0.7,
 )
     d_size = size(deposit, 1)
     t_size = size(demand, 1)
@@ -45,23 +44,31 @@ function runOptimization(
 
     # Name
     deposit_name = deposit[!, :Name]
+    deposit_id = deposit[!, :ID]
+
+    # Recovery rates
+    recovery_rate_cu = deposit[!, :recovery_rate_Copper]
+    recovery_rate_ni = deposit[!, :recovery_rate_Nickel]
+    recovery_rate_co = deposit[!, :recovery_rate_Cobalt]
+    recovery_rate_li = deposit[!, :recovery_rate_Lithium]
 
     # Reserves and resources by mineral
-    resources_cu = deposit[!, :resources_Copper] .* recovery_rate ./ 1e3 # to ktons
+    resources_cu = deposit[!, :resources_Copper] .* recovery_rate_cu ./ 1e3 # to ktons
     grade_cu = deposit[!, :grade_resource_Copper] ./ 100 # to %
-    resources_ni = deposit[!, :resources_Nickel] .* recovery_rate ./ 1e3 # to ktons
+    resources_ni = deposit[!, :resources_Nickel] .* recovery_rate_ni ./ 1e3 # to ktons
     grade_ni = deposit[!, :grade_resource_Nickel] ./ 100 # to %
-    resources_co = deposit[!, :resources_Cobalt] .* recovery_rate ./ 1e3 # to ktons
+    resources_co = deposit[!, :resources_Cobalt] .* recovery_rate_co ./ 1e3 # to ktons
     grade_co = deposit[!, :grade_resource_Cobalt] ./ 100 # to %
-    # resources_li = deposit[!, :resources_Lithium] .* recovery_rate ./ 1e3 # to ktons 
-    # grade_li = deposit[!, :grade_resource_Lithium] ./ 100 # to
+    resources_li = deposit[!, :resources_Lithium] .* recovery_rate_li ./ 1e3 # to ktons 
+    grade_li = deposit[!, :grade_resource_Lithium] ./ 100 # to
 
     resources_ore = deposit[!, :resources_ore] ./ 1e3 # to ktons
 
     # Dynamics
     cap2025 = deposit[!, :cap2025] ./ 1e3 # to ktons
 
-    max_prod_rate = resources_ore .* 0.04 # 4% depletion rate, kton per year
+    max_depletion_rate = deposit[!, :max_depletion_rate] # to %
+    max_prod_rate = resources_ore .* max_depletion_rate # 4% depletion rate, kton per year (2% for brine evaporation)
     max_prod_rate = max.(max_prod_rate, cap2025) # some small mines have really high depletion rate
     max_ramp_up = max_prod_rate ./ 4 # 4 years ramp up
     min_prod_rate = max_prod_rate ./ 4
@@ -136,7 +143,7 @@ function runOptimization(
     bigM_cost_Cu = bigM_cost_Cu .* (1 ./ discounter')
     bigM_cost_Ni = bigM_cost_Ni .* (1 ./ discounter')
     bigM_cost_Co = bigM_cost_Co .* (1 ./ discounter')
-    # bigM_cost_Li = bigM_cost_Li .* (1 ./ discounter
+    bigM_cost_Li = bigM_cost_Li .* (1 ./ discounter')
 
     # Create optimization model
     model = Model(Gurobi.Optimizer)
@@ -148,7 +155,7 @@ function runOptimization(
     @variable(model, z_cu[1:t_size] >= 0)  # Slack to match balance
     @variable(model, z_ni[1:t_size] >= 0)  # Slack to match balance
     @variable(model, z_co[1:t_size] >= 0)  # Slack to match balance
-    # @variable(model, z_li[1:t_size] >= 0)  # Slack to match balance
+    @variable(model, z_li[1:t_size] >= 0)  # Slack to match balance
 
     # Fix deposits already open 
     for d in 1:d_size
@@ -171,7 +178,12 @@ function runOptimization(
         sum(
             cost_extraction[d, t] * x[d, t] + cost_expansion[d, t] * y[d, t] + cost_opening[d, t] * w[d, t] for
             d in 1:d_size, t in 1:t_size
-        ) + sum(bigM_cost_Cu[t] * z_cu[t] + bigM_cost_Ni[t] * z_ni[t] + bigM_cost_Co[t] * z_co[t] for t in 1:t_size)
+        ) + sum(
+            bigM_cost_Cu[t] * z_cu[t] +
+            bigM_cost_Ni[t] * z_ni[t] +
+            bigM_cost_Co[t] * z_co[t] +
+            bigM_cost_Li[t] * z_li[t] for t in 1:t_size
+        )
     )
     # Water consumption and impact
     @expression(model, water_expr, sum(water_cons[d] * x[d, t] for d in 1:d_size, t in 1:t_size))
@@ -180,7 +192,12 @@ function runOptimization(
     @expression(
         model,
         slack_cost_expr,
-        sum(bigM_cost_Cu[t] * z_cu[t] + bigM_cost_Ni[t] * z_ni[t] + bigM_cost_Co[t] * z_co[t] for t in 1:t_size)
+        sum(
+            bigM_cost_Cu[t] * z_cu[t] +
+            bigM_cost_Ni[t] * z_ni[t] +
+            bigM_cost_Co[t] * z_co[t] +
+            bigM_cost_Li[t] * z_li[t] for t in 1:t_size
+        )
     )
     # Mines opeded
     @expression(model, mines_opened_expr, sum(w[d, t] for d in 1:d_size, t in 1:t_size)) - mines_alreadyOpen
@@ -193,33 +210,50 @@ function runOptimization(
     @constraint(
         model,
         c1_cu[t in 1:t_size],
-        sum(x[d, t] * grade_cu[d] * recovery_rate for d in 1:d_size) + z_cu[t] >=
+        sum(x[d, t] * grade_cu[d] * recovery_rate_cu[d] for d in 1:d_size) + z_cu[t] >=
             demand_cu[t] + (t > 1 ? z_cu[t - 1] : 0)
     )
     @constraint(
         model,
         c1_ni[t in 1:t_size],
-        sum(x[d, t] * grade_ni[d] * recovery_rate for d in 1:d_size) + z_ni[t] >=
+        sum(x[d, t] * grade_ni[d] * recovery_rate_ni[d] for d in 1:d_size) + z_ni[t] >=
             demand_ni[t] + (t > 1 ? z_ni[t - 1] : 0)
     )
     @constraint(
         model,
         c1_co[t in 1:t_size],
-        sum(x[d, t] * grade_co[d] * recovery_rate for d in 1:d_size) + z_co[t] >=
+        sum(x[d, t] * grade_co[d] * recovery_rate_co[d] for d in 1:d_size) + z_co[t] >=
             demand_co[t] + (t > 1 ? z_co[t - 1] : 0)
+    )
+    @constraint(
+        model,
+        c1_li[t in 1:t_size],
+        sum(x[d, t] * grade_li[d] * recovery_rate_li[d] for d in 1:d_size) + z_li[t] >=
+            demand_li[t] + (t > 1 ? z_li[t - 1] : 0)
     )
     # Extraction less than available production capacity
     @constraint(model, c2[d in 1:d_size, t in 1:t_size], x[d, t] <= sum(y[d, t1] for t1 in 1:t) + cap2025[d])
     # Max depletion of resources
     @constraint(model, c3_ore[d in 1:d_size], sum(x[d, t] for t in 1:t_size) <= resources_ore[d])
     @constraint(
-        model, c3_cu[d in 1:d_size], sum(x[d, t] * grade_cu[d] * recovery_rate for t in 1:t_size) <= resources_cu[d]
+        model,
+        c3_cu[d in 1:d_size],
+        sum(x[d, t] * grade_cu[d] * recovery_rate_cu[d] for t in 1:t_size) <= resources_cu[d]
     )
     @constraint(
-        model, c3_ni[d in 1:d_size], sum(x[d, t] * grade_ni[d] * recovery_rate for t in 1:t_size) <= resources_ni[d]
+        model,
+        c3_ni[d in 1:d_size],
+        sum(x[d, t] * grade_ni[d] * recovery_rate_ni[d] for t in 1:t_size) <= resources_ni[d]
     )
     @constraint(
-        model, c3_co[d in 1:d_size], sum(x[d, t] * grade_co[d] * recovery_rate for t in 1:t_size) <= resources_co[d]
+        model,
+        c3_co[d in 1:d_size],
+        sum(x[d, t] * grade_co[d] * recovery_rate_co[d] for t in 1:t_size) <= resources_co[d]
+    )
+    @constraint(
+        model,
+        c3_li[d in 1:d_size],
+        sum(x[d, t] * grade_li[d] * recovery_rate_li[d] for t in 1:t_size) <= resources_li[d]
     )
     # Max production rate only on open mines
     @constraint(
@@ -241,7 +275,9 @@ function runOptimization(
     end
 
     # Save results
-    save_results_from_model!(model; sr_saveFolder=saveFolder, sr_Optname="NoWaterConstraint")
+    save_results_from_model!(
+        model; sr_saveFolder=saveFolder, sr_Optname="NoWaterConstraint", sr_ids=deposit_id, sr_names=deposit_name
+    )
 
     # Water constraint Water available per basin
     @constraint(
@@ -257,6 +293,7 @@ function runOptimization(
     z_values_cu = value.(z_cu)
     z_values_ni = value.(z_ni)
     z_values_co = value.(z_co)
+    z_values_li = value.(z_li)
 
     # Save optimization parameters - common for all the runs inside the function loop
     url_file = "Results/Optimization/" * saveFolder * "/OptimizationInputs.csv"
@@ -274,7 +311,9 @@ function runOptimization(
     )
     CSV.write(url_file, inputs_text)
 
-    save_results_from_model!(model; sr_saveFolder=saveFolder, sr_Optname="Base")
+    save_results_from_model!(
+        model; sr_saveFolder=saveFolder, sr_Optname="Base", sr_ids=deposit_id, sr_names=deposit_name
+    )
 
     # Get shadow prices (dual variables)
     m_dual, ref = copy_model(model) # copy model to use it later, refs is a reference to the original model so I can extract thing from the duals that are equivalent
@@ -295,9 +334,20 @@ function runOptimization(
     CSV.write(url_file, df_dual)
 
     # Save duals for demand
-    df_dual = DataFrame(; t=Int[], sp_demand_cu=Float64[], sp_demand_ni=Float64[], sp_demand_co=Float64[])
+    df_dual = DataFrame(;
+        t=Int[], sp_demand_cu=Float64[], sp_demand_ni=Float64[], sp_demand_co=Float64[], sp_demand_li=Float64[]
+    )
     for t in 1:t_size
-        con = push!(df_dual, (t, shadow_price(ref[c1_cu[t]]), shadow_price(ref[c1_ni[t]]), shadow_price(ref[c1_co[t]]))) # in million USD per kton metal
+        con = push!(
+            df_dual,
+            (
+                t,
+                shadow_price(ref[c1_cu[t]]),
+                shadow_price(ref[c1_ni[t]]),
+                shadow_price(ref[c1_co[t]]),
+                shadow_price(ref[c1_li[t]]),
+            ),
+        ) # in million USD per kton metal
     end
     url_file = "Results/Optimization/" * saveFolder * "/SP_Demand.csv"
     CSV.write(url_file, df_dual)
@@ -312,6 +362,7 @@ function runOptimization(
             fix(z_cu[idx], z_values_cu[idx]; force=true)
             fix(z_ni[idx], z_values_ni[idx]; force=true)
             fix(z_co[idx], z_values_co[idx]; force=true)
+            fix(z_li[idx], z_values_li[idx]; force=true)
         end
 
         # new objective
@@ -331,6 +382,8 @@ function runOptimization(
                 model;
                 sr_saveFolder=saveFolder,
                 sr_Optname="MGA_Water_Eps$(lpad(string(round(Int, 100 * epsilon_cost)), 2, '0'))",
+                sr_ids=deposit_id,
+                sr_names=deposit_name,
             )
         end
     end

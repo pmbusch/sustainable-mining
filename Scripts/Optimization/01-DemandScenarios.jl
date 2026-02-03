@@ -14,7 +14,7 @@ using LinearAlgebra
 include("Optimization_Multi.jl")
 
 # Load data
-depositAll = DataFrame(CSV.File("Parameters/CuNiCo_Deposit.csv"))
+depositAll = DataFrame(CSV.File("Parameters/Deposit.csv"))
 demandAll = DataFrame(CSV.File("Parameters/IEA_Demand.csv"))
 
 # Single Run - DEBUG

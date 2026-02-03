@@ -18,7 +18,8 @@ list_libraries <- c(
   "scales",
   "RColorBrewer",
   "sf",
-  "ggrepel"
+  "ggrepel",
+  "paletteer"
 ) # maps
 
 # Install libraries if they are not present
