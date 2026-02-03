@@ -716,7 +716,7 @@ df_save |>
   dplyr::select(Name, ID, est_cu, resources_Copper, abs_diff_cu, est_ni, resources_Nickel, abs_diff_ni) |>
   arrange(desc(abs_diff_ni))
 
-# Not really, approach, fix grade based on ore and resources
+# Not really, approach: fix grade based on ore and resources
 # These approach assumes resources are correct
 df_save <- df_save |>
   mutate(
@@ -728,9 +728,13 @@ df_save <- df_save |>
 # Minor corrections
 # df_save |> dplyr::select(grade_resource_Copper,grade_resource_Nickel,grade_resource_Cobalt) |> skimr::skim()
 
-df_save <- df_save |> arrange(ID)
-# SAVE ---------
+# Add assumptions on recovery rate and max depletion rate
+df_save <- df_save |>
+  mutate(recovery_rate_Copper = 0.8, recovery_rate_Nickel = 0.7, recovery_rate_Cobalt = 0.7) |>
+  mutate(max_depletion_rate = 0.04)
 
+# SAVE ---------
+df_save <- df_save |> arrange(ID)
 write.csv(df_save, "Parameters/Intermediate/CuNiCo_Deposit_SP.csv", row.names = F)
 
 # EoF

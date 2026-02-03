@@ -60,6 +60,7 @@ df <- df |>
   ungroup()
 
 # Filter 2025 to 2050 and total demand
+df_all <- df |> filter(Year >= 2025)
 df <- df |> filter(Year >= 2025, Sector == "Total demand")
 
 nrow(df) # 312 = 26 years * 4 minerals * 3 scenarios
@@ -71,5 +72,61 @@ df_wide <- df |> mutate(Sector = NULL) |> pivot_wider(names_from = Mineral, valu
 nrow(df_wide) # 78 = 26 years * 3 scenarios
 
 write.csv(df_wide, "Parameters/IEA_Demand.csv", row.names = FALSE)
+
+
+# Figure ----------------------
+
+df <- df |> mutate(Mineral = factor(Mineral, levels = c("Copper", "Nickel", "Cobalt", "Lithium")))
+
+data_fig <- df_all |>
+  filter(!(Sector %in% c("Total demand", "Total clean technologies"))) |>
+  mutate(Mineral = factor(Mineral, levels = c("Copper", "Nickel", "Cobalt", "Lithium"))) |>
+  filter(Scenario == "SPS") |>
+  mutate(Sector = str_replace(Sector, "Low", "Other low") |> str_replace("emissions power", "emissions\npower")) |>
+  mutate(
+    Sector = factor(
+      Sector,
+      levels = c(
+        "Solar PV",
+        "Wind",
+        "Other low emissions\npower generation",
+        "Electric vehicles",
+        "Grid battery storage",
+        "Electricity networks",
+        "Hydrogen technologies",
+        "Other uses"
+      )
+    )
+  ) |>
+  group_by(Mineral, Year) %>%
+  mutate(share = ktons / sum(ktons)) %>%
+  ungroup() |>
+  mutate(label_end = if_else(share > 0.3, Sector, ""))
+
+ggplot(data_fig, aes(Year, ktons / 1e3)) +
+  geom_area(aes(fill=Sector),col="darkgrey",linewidth=.1) +
+  geom_line(data = df, aes(col = Scenario), linewidth = .7) +
+  geom_text(data=filter(df,Year==2050), aes(label=Scenario),nudge_x=.2, size=7*5/14*0.8,hjust=0) +
+  # geom_text(
+  #   data = filter(data_fig, Year == 2050),
+  #   aes(label = label_end),
+  #   nudge_x = .2,
+  #   size = 7 * 5 / 14 * 0.8,
+  #   hjust = 0,
+  #   position = position_stack(vjust = 0.5)
+  # ) +
+  facet_wrap(~Mineral, scales = "free") +
+  labs(y = "", title = "Metal Demand (Million tonnes)", x = "", col = "") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0))) +
+  scale_color_manual(guide = "none", values = c("SPS" = "black", "APS" = "#E69F00", "NZE" = "#009E73")) +
+  scale_fill_paletteer_d("MoMAColors::Klein", name = "Sector") +
+  coord_cartesian(xlim = c(2025, 2053), ylim = c(0, NA)) +
+  theme_pb_wide() +
+  theme(legend.position = "right")
+
+
+# fmt: skip
+ggsave("Figures/MineralDemand.png", ggplot2::last_plot(),units = 'cm', dpi = 600, width = 8.7*2, height = 8.7)
 
 # EoF

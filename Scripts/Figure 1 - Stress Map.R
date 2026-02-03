@@ -87,7 +87,7 @@ mk_inset <- function(xlim, ylim, tag, data_) {
 # fmt: skip
 p_copper1 <- mk_inset(c(-130, -100), c(25, 55), "(b) Copper (incl. co-products)", filter(deps, Mineral == "Copper"))
 p_copper2 <- mk_inset(c(-85, -65), c(-35, 5), "", filter(deps, Mineral == "Copper"))
-p_lithium <- mk_inset(c(-75, -65), c(-30, -13), "(c) Lithium", filter(deps, PRIMARY_COMMODITY == "Lithium"))
+p_lithium <- mk_inset(c(-75, -65), c(-30, -13), "(c) Lithium", filter(deps, Mineral == "Lithium"))
 p_cobalt <- mk_inset(c(20, 32), c(-15, -5), "(d) Cobalt (incl. co-products)", filter(deps, Mineral == "Cobalt"))
 p_nickel <- mk_inset(c(110, 155), c(-44, 20), "(e) Nickel (incl. co-products)", filter(deps, Mineral == "Nickel"))
 
