@@ -13,44 +13,33 @@
 source('Scripts/00-Libraries.R', encoding = 'UTF-8')
 library(sf)
 library(terra)
+library(ncdf4)
 
 # Set paths ----
-input_dir_watergap <- "Parameters/WaterGAP"
+input_dir_watergap <- "Inputs/AWARE/WaterGap"
 input_dir_aware <- "Inputs/AWARE"
 output_dir <- "Parameters/WaterGAP"
 
-# Load a sample ensemble file to get grid coordinates ----
-# We only need lon, lat, and area_m2 - any intermediate file will work
-cat("\n=== LOADING GRID COORDINATES ===\n")
-intermediate_dir <- file.path(input_dir_watergap, "intermediate")
-sample_files <- list.files(intermediate_dir, pattern = "^ensemble_.*\\.rds$", full.names = TRUE)
+# This file contains the area of each grid cell (needed for unit conversion)
+continental_file <- file.path(input_dir_watergap, "watergap22e_gswp3-w5e5_continentalarea_histsoc_static.nc")
+nc_area <- nc_open(continental_file)
+# Extract area data (in km2 to m2)
+area_data <- ncvar_get(nc_area, "continentalarea") * 1e6
+lon <- ncvar_get(nc_area, "lon")
+lat <- ncvar_get(nc_area, "lat")
+nc_close(nc_area)
 
-if (length(sample_files) == 0) {
-  stop("No ensemble files found. Run script 05 first to generate intermediate files.")
-}
-
-# Load first file to get grid structure
-sample_data <- readRDS(sample_files[1])
-unique_coords <- sample_data %>% distinct(lon, lat, area_m2)
+# Create spatial reference for the grid
+unique_coords <- expand.grid(lon = lon, lat = lat) %>% mutate(area_m2 = as.vector(area_data))
 
 cat("Grid cells:", nrow(unique_coords), "\n")
 cat("Lon range:", range(unique_coords$lon), "\n")
 cat("Lat range:", range(unique_coords$lat), "\n")
 
-# Determine grid resolution ----
-lon_diff <- sample_data %>%
-  arrange(lat, lon) %>%
-  group_by(lat) %>%
-  summarise(min_diff = min(diff(sort(unique(lon)))), .groups = "drop") %>%
-  pull(min_diff) %>%
-  median(na.rm = TRUE)
+# Determine grid resolution from coordinate spacing (half-width for polygon creation)
+grid_resolution <- median(diff(sort(unique(lon)))) / 2
+cat("Grid resolution:", grid_resolution * 2, "degrees (half-width:", grid_resolution, ")\n")
 
-grid_resolution <- lon_diff / 2
-
-cat("Grid resolution:", lon_diff, "degrees\n")
-
-rm(sample_data)
-gc()
 
 # Load basin polygons ----
 cat("\n=== LOADING BASIN POLYGONS ===\n")
@@ -173,18 +162,61 @@ cat("Unique basins:", n_distinct(grid_basin_lookup$Basin_ID), "\n")
 # Quality checks ----
 cat("\n=== QUALITY CHECKS ===\n")
 
-# Check overlap fractions
-cat("Overlap fraction range:", range(grid_basin_lookup$overlap_fraction), "\n")
-cat("Mean overlap fraction:", mean(grid_basin_lookup$overlap_fraction), "\n")
-cat("Overlap fraction summary:\n")
+# Check individual overlap fractions
+cat("Overlap fraction per row:\n")
 print(summary(grid_basin_lookup$overlap_fraction))
 
+# Check sum of overlap fractions per grid cell (should be <= 1)
+grid_alloc <- grid_basin_lookup %>%
+  group_by(lon, lat) %>%
+  summarise(
+    total_fraction = sum(overlap_fraction),
+    n_basins = n(),
+    .groups = "drop"
+  )
+
+cat("\nTotal allocation per grid cell (sum of overlap fractions):\n")
+print(summary(grid_alloc$total_fraction))
+
+# Flag grid cells with allocation > 1 (tolerance for projection artifacts)
+tol <- 1e-3
+over_allocated <- grid_alloc %>% filter(total_fraction > 1 + tol)
+if (nrow(over_allocated) > 0) {
+  cat("WARNING:", nrow(over_allocated), "grid cells have total allocation > 1:\n")
+  print(over_allocated %>% arrange(desc(total_fraction)) %>% head(10))
+  # Cap at 1 by rescaling proportionally
+  cat("Rescaling over-allocated grid cells to sum to 1...\n")
+  grid_basin_lookup <- grid_basin_lookup %>%
+    left_join(grid_alloc %>% select(lon, lat, total_fraction), by = c("lon", "lat")) %>%
+    mutate(overlap_fraction = if_else(total_fraction > 1 + tol,
+                                       overlap_fraction / total_fraction,
+                                       overlap_fraction)) %>%
+    select(-total_fraction)
+} else {
+  cat("OK: All grid cells have total allocation <= 1\n")
+}
+
+# Report under-allocated cells (fraction < 1, e.g. coastal cells partially over ocean)
+under_allocated <- grid_alloc %>% filter(total_fraction < 1 - tol)
+cat("Grid cells with partial allocation (< 1):", nrow(under_allocated),
+    "out of", nrow(grid_alloc), "\n")
+
+# Multi-basin cells
+multi_basin <- grid_alloc %>% filter(n_basins > 1)
+cat("Grid cells mapped to multiple basins:", nrow(multi_basin), "\n")
+if (nrow(multi_basin) > 0) {
+  cat("Max basins per grid cell:", max(multi_basin$n_basins), "\n")
+}
 
 # Check that all basins have grid connections
 basins_with_grids <- grid_basin_lookup %>% distinct(Basin_ID) %>% pull(Basin_ID)
-
 all_basin_ids <- basins$Basin_ID
-missing_basins <- setdiff(all_basin_ids, basins_with_grids) # onle one, but it is not relevant
+missing_basins <- setdiff(all_basin_ids, basins_with_grids)
+if (length(missing_basins) > 0) {
+  cat("WARNING:", length(missing_basins), "basins have no grid cell overlap\n")
+} else {
+  cat("OK: All basins have at least one grid cell\n")
+}
 
 # Save lookup table ----
 cat("\n=== SAVING LOOKUP TABLE ===\n")
