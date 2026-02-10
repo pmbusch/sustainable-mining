@@ -10,6 +10,8 @@ using LinearAlgebra
 using Statistics
 
 include("SaveFunction.jl")  # load save function
+include("ShadowPriceFunction.jl")  # load shadow price function
+include("ClimateScenarioFunction.jl")  # load climate scenario function
 
 # Optimization Run Function
 # Inputs:
@@ -19,6 +21,7 @@ include("SaveFunction.jl")  # load save function
 # - discount rate (default 7%)
 # - use an hyperbolic discount rate (default is false)
 # - run multiobjective to explore solutions with some cost degradation
+# - climate scenario to use for water constraints (availability) and freshwater impacts (default "none")
 # - cost to not met demand (slack) - historic high price for each mineral by 50% more (only lithium price is orignally in per tons LCE)
 function runOptimization(
     demand,
@@ -27,6 +30,7 @@ function runOptimization(
     discount_rate=0.07,
     hyperbolic=false,
     multiobjective=true,
+    climate_scenario="none",
     bigM_cost_Li=68000 * 1.5 * 5.323 / 1e3,
     bigM_cost_Cu=14000 * 1.5 / 1e3,
     bigM_cost_Ni=48000 * 1.5 / 1e3,
@@ -85,18 +89,21 @@ function runOptimization(
     cost_opening = cost_opening .* share_NiCoCu
 
     # Water parameters
-    water_footprint = deposit[!, :water_footprint] ./ 1e3 # divide by 1e6 to million m3, multiply by 1e3 to get to kton ore processed
     water_cons = deposit[!, :water] ./ 1e3 # water consumption, converted to million m3 per kton ore processed
 
-    #group deposits by basin (indices are deposit rows)
-    basins = sort(unique(deposit.Basin_ID))
-    deposits_in_basin = Dict(b => findall(deposit.Basin_ID .== b) for b in basins) # b index for basins
+    # Load time-indexed water_footprint[d,t] and aware_available[basin][t] from climate scenario
+    water_footprint, aware_available = load_climate_scenario(deposit, depositAll, climate_scenario, d_size, t_size)
 
-    # Water available in million m3 by each basin
-    aware_available = combine(groupby(deposit, :Basin_ID), :aware_available => mean => :aware_available)
-    aware_available.aware_available ./= 1e6 # million m3
-    aware_available.aware_available .= max.(aware_available.aware_available, 0.0) # negative availabilty is treated as no more water
-    aware_available = Dict(r.Basin_ID => r.aware_available for r in eachrow(aware_available))
+    # Map of contained deposits (including in upstream basins) for each basin
+    bd = CSV.read("Parameters/basin_to_deposits_upstream.csv", DataFrame)
+    # --- Map deposit_id -> row index in `deposit` (so it matches x[i,t]) ---
+    id2idx = Dict(deposit.ID[i] => i for i in 1:nrow(deposit))
+
+    # --- Basin -> Vector{Int} of deposit row indices (incl. upstream) ---
+    deposits_in_basin = Dict(Int(first(v.Basin_ID)) => [id2idx[id] for id in v.ID] for v in groupby(bd, :Basin_ID))
+
+    aware_basins = unique([k[1] for k in keys(aware_available)])
+    basins = sort(intersect(collect(keys(deposits_in_basin)), aware_basins))
 
     # Set big M values
     bigM_extract = maximum(max_prod_rate)
@@ -187,7 +194,7 @@ function runOptimization(
     )
     # Water consumption and impact
     @expression(model, water_expr, sum(water_cons[d] * x[d, t] for d in 1:d_size, t in 1:t_size))
-    @expression(model, water_impact_expr, sum(water_footprint[d] * x[d, t] for d in 1:d_size, t in 1:t_size))
+    @expression(model, water_impact_expr, sum(water_footprint[d, t] * x[d, t] for d in 1:d_size, t in 1:t_size))
     # Slack cost
     @expression(
         model,
@@ -279,11 +286,11 @@ function runOptimization(
         model; sr_saveFolder=saveFolder, sr_Optname="NoWaterConstraint", sr_ids=deposit_id, sr_names=deposit_name
     )
 
-    # Water constraint Water available per basin
+    # Water constraint Water available per basin (includes consumption in upstream basins)
     @constraint(
         model,
         c7[b in basins, t in 1:t_size],
-        sum(x[i, t] * water_cons[i] for i in deposits_in_basin[b]) <= aware_available[b]
+        sum(x[i, t] * water_cons[i] for i in deposits_in_basin[b]) <= aware_available[b, t]
     )
 
     # Save results prior to MGA for water
@@ -316,41 +323,7 @@ function runOptimization(
     )
 
     # Get shadow prices (dual variables)
-    m_dual, ref = copy_model(model) # copy model to use it later, refs is a reference to the original model so I can extract thing from the duals that are equivalent
-    relax_integrality(m_dual)
-    for idx in eachindex(w)
-        fix(ref[w[idx]], value(w[idx]); force=true) # fix binaries (no longer variables)
-    end
-    set_optimizer(m_dual, Gurobi.Optimizer)
-    optimize!(m_dual) # solve linear version
-
-    # Save duals for basins
-    df_dual = DataFrame(; Basin_ID=Int[], t=Int[], shadow=Float64[])
-    for b in basins, t in 1:t_size
-        con = ref[c7[b, t]]
-        push!(df_dual, (b, t, shadow_price(con))) # unit is in USD per m3 of extra water
-    end
-    url_file = "Results/Optimization/" * saveFolder * "/SP_Basin.csv"
-    CSV.write(url_file, df_dual)
-
-    # Save duals for demand
-    df_dual = DataFrame(;
-        t=Int[], sp_demand_cu=Float64[], sp_demand_ni=Float64[], sp_demand_co=Float64[], sp_demand_li=Float64[]
-    )
-    for t in 1:t_size
-        con = push!(
-            df_dual,
-            (
-                t,
-                shadow_price(ref[c1_cu[t]]),
-                shadow_price(ref[c1_ni[t]]),
-                shadow_price(ref[c1_co[t]]),
-                shadow_price(ref[c1_li[t]]),
-            ),
-        ) # in million USD per kton metal
-    end
-    url_file = "Results/Optimization/" * saveFolder * "/SP_Demand.csv"
-    CSV.write(url_file, df_dual)
+    save_shadow_prices_from_model!(model; sr_saveFolder=saveFolder, sr_Optname="", sr_basins=basins)
 
     # Run multiobjective to minimize water impact
     if (multiobjective)
@@ -366,7 +339,7 @@ function runOptimization(
         end
 
         # new objective
-        @objective(model, Min, sum(water_footprint[d] * x[d, t] for d in 1:d_size, t in 1:t_size))
+        @objective(model, Min, sum(water_footprint[d, t] * x[d, t] for d in 1:d_size, t in 1:t_size))
 
         # constraint 
         cost_con = @constraint(model, cost_expr <= 1.15 * opt_val)  # create once
@@ -381,9 +354,17 @@ function runOptimization(
             save_results_from_model!(
                 model;
                 sr_saveFolder=saveFolder,
-                sr_Optname="MGA_Water_Eps$(lpad(string(round(Int, 100 * epsilon_cost)), 2, '0'))",
+                sr_Optname="Water_Eps$(lpad(string(round(Int, 100 * epsilon_cost)), 2, '0'))",
                 sr_ids=deposit_id,
                 sr_names=deposit_name,
+            )
+
+            # Get shadow prices (dual variables)
+            save_shadow_prices_from_model!(
+                model;
+                sr_saveFolder=saveFolder,
+                sr_Optname="Water_Eps$(lpad(string(round(Int, 100 * epsilon_cost)), 2, '0'))",
+                sr_basins=basins,
             )
         end
     end

@@ -1,6 +1,6 @@
+# Common function to abstract code do to multiple results savings
 using JuMP, DataFrames, CSV
 
-# Common function to abstract code do to multiple results savings
 function save_results_from_model!(
     sr_model::JuMP.Model;
     sr_saveFolder::AbstractString,

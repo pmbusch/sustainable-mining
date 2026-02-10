@@ -230,7 +230,7 @@ wb_basin <- wb |>
   # mutate(demand_noMining = aware_demand - water_cons_2025) |>
   # arrange(demand_noMining)
   mutate(aware_available = aware_available + water_cons_2025) |> # add baseline water back to basin availability for mining purposes
-  dplyr::select(Basin_ID, aware_available)
+  dplyr::select(Basin_ID, aware_available, water_cons_2025)
 
 wb$aware_available <- NULL
 wb <- wb %>% left_join(wb_basin, by = "Basin_ID")
@@ -238,5 +238,37 @@ wb <- wb %>% left_join(wb_basin, by = "Basin_ID")
 # Save water data
 names(wb)
 write.csv(wb, "Parameters/Deposit.csv", row.names = F)
+
+# Pre-compute water tree upstream table (acyclical) - a sub-basin only has one discharge basin
+# Sub-basin ID Tree from AWARE 2.0
+tree <- read_excel("Inputs/AWARE/AWARE20_Intermediate_Variables.xlsx", "additional_information")
+upstream <- tree |>
+  dplyr::select(Basin_ID, subbasin_discharges_into_Basin_ID) |>
+  filter(!(subbasin_discharges_into_Basin_ID %in% c(-1, -11))) |>
+  group_by(subbasin_discharges_into_Basin_ID) |>
+  summarise(up = list(Basin_ID), .groups = "drop") |>
+  deframe()
+
+# recursive function: all upstream basins of i (including i)
+f.get_upstream <- function(i) {
+  u <- upstream[[as.character(i)]]
+  if (is.null(u)) {
+    return(i)
+  }
+  unique(c(i, unlist(map(u, f.get_upstream))))
+}
+
+basins <- unique(tree$Basin_ID)
+# indicates basin to sub-basins (upstream) - including itself
+upstream_df <- tibble(Basin_ID = basins, upstream_basins = map(basins, f.get_upstream)) |> unnest(upstream_basins)
+
+# Create map - all deposits - including upstream - inside each basin
+# Do to upstream, deposits may be repeated
+basin_deposits <- upstream_df |>
+  left_join(dplyr::select(wb, ID, Name, Basin_ID) |> rename(upstream_basins = Basin_ID), by = "upstream_basins") |>
+  filter(!is.na(ID)) |>
+  distinct(Basin_ID, ID, Name)
+
+write.csv(basin_deposits, "Parameters/basin_to_deposits_upstream.csv", row.names = FALSE)
 
 # EoF
