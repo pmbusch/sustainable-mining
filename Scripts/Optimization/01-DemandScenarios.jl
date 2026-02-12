@@ -20,6 +20,7 @@ demandAll = DataFrame(CSV.File("Parameters/IEA_Demand.csv"))
 # Single Run - DEBUG
 # demandBase = filter(row -> row.Scenario == "NZE", demandAll)
 # runOptimization(demandBase, depositAll, "TestSP"; multiobjective=false, climate_scenario="Deposit_ssp585_gfdl-esm4.csv")
+# runOptimization(demandBase, depositAll, "TestSP"; multiobjective=false)
 
 # DEMAND SCENARIOS
 # Extract unique scenarios
