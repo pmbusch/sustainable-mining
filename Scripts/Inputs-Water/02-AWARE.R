@@ -55,13 +55,48 @@ cf_map <- cf_map |> filter(!is.na(annual_unspecified))
 
 cf_map <- cf_map |> rename(aware_cf = annual_unspecified, aware_demand = annual_sum, aware_available = available_m3)
 
+# available after demand
+sum(cf_map$aware_available) / 1e9 # 42769 km3 available water annually globally
+
+cf_map <- cf_map |> mutate(gross_available = aware_available + aware_demand) # add demand back to availability to get gross available water
+sum(cf_map$gross_available) / 1e9 #  44350 km3
+
+## Numerical stability, convert really low numbers for availability to zero ----------
+cf_map |>
+  st_drop_geometry() |>
+  ggplot(aes(x = gross_available + 1e-6)) +
+  # geom_histogram(bins = 100) +
+  stat_ecdf() +
+  scale_x_log10()
+
+cutoff <- 0 # to inspect baseline scenario
+cutoff <- 1e6 # 1 million m3 per year per basin
+cf_map |>
+  st_drop_geometry() |>
+  filter(gross_available > cutoff) |>
+  reframe(
+    max_val = max(gross_available, na.rm = TRUE),
+    min_val = min(gross_available, na.rm = TRUE),
+    spread = (max_val / min_val),
+    n = n()
+  ) |>
+  mutate(
+    max_val = formatC(max_val, format = "e", digits = 2),
+    min_val = formatC(min_val, format = "e", digits = 2),
+    spread = formatC(spread, format = "e", digits = 2) # e19 spread!!!!! to much
+  )
+
+# change to zero
+cf_map <- cf_map |>
+  mutate(gross_available = if_else(abs(gross_available) > cutoff, gross_available, 0)) |>
+  mutate(aware_available = gross_available - aware_demand)
 
 sum(cf_map$aware_available) / 1e9 # 42769 km3 available water annually globally
+
 save_aux <- cf_map |>
   st_drop_geometry() |>
-  dplyr::select(Basin_ID, aware_cf, aware_demand, aware_available) |>
-  mutate(full_available = aware_available + aware_demand) |> # add demand so it is full available water
-  mutate(stress = if_else(full_available < 0, 1, aware_demand / full_available)) |>
+  dplyr::select(Basin_ID, aware_cf, aware_demand, aware_available, gross_available) |>
+  mutate(stress = if_else(gross_available <= 0, 1, aware_demand / gross_available)) |>
   mutate(stress = if_else(aware_demand < 0, 0, stress))
 
 # Save basin aware water stres
@@ -97,11 +132,12 @@ if (showMaps) {
     )
 }
 
+
 # ADD DEPOSITS WATER CONSUMPTIONS --------------
 
 # S&P Copper, Nickel, Cobalt, Lithium Data - already filtered and pre-processed so it is based on ore processed
 deposit <- read.csv("Parameters/Intermediate/All_Deposit_SP.csv")
-nrow(deposit) # 1781
+nrow(deposit) # 1108
 
 ## WATER CONSUMPTION ---------
 
@@ -157,7 +193,7 @@ deposit <- deposit %>%
     ),
     water_fill = if_else(!is.na(ore_cons) | !is.na(ore_cons_li), "Literature", "Fitted Model")
   )
-table(deposit$water_fill) # 78 literature
+table(deposit$water_fill) # 77 literature
 sum(is.na(deposit$water)) # no missing
 range(deposit$water)
 
@@ -203,8 +239,7 @@ aware <- pts_join |> select(Basin_ID, Name, ID, aware_cf, aware_demand, aware_av
 
 # join to deposit database no geometry
 aware <- st_drop_geometry(aware)
-nrow(aware) # 1781
-
+nrow(aware) # 1108
 # add water risk baseline - AWARE factors
 # factor from 0.1 to 100
 # annual demand and available in m3 per year

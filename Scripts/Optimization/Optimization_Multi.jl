@@ -92,7 +92,7 @@ function runOptimization(
     water_cons = deposit[!, :water] ./ 1e3 # water consumption, converted to million m3 per kton ore processed
 
     # Load time-indexed water_footprint[d,t] and aware_available[basin][t] from climate scenario
-    water_footprint, aware_available = load_climate_scenario(deposit, depositAll, climate_scenario, d_size, t_size)
+    water_footprint, aware_available = load_climate_scenario(deposit, climate_scenario, d_size, t_size)
 
     # Map of contained deposits (including in upstream basins) for each basin
     bd = CSV.read("Parameters/basin_to_deposits_upstream.csv", DataFrame)
@@ -137,15 +137,6 @@ function runOptimization(
     salvage_cap = (1 .- fraction_notRecovered) .* cost_expansion .* reshape(frac, 1, :)
     cost_expansion = cost_expansion .- salvage_cap
 
-    # Avoid expansion of certain mines with no info
-    status = deposit[!, :status]
-    delay_years = deposit[!, :delay_years] # delay in expansion
-    for i in 1:size(cost_expansion, 1)
-        if delay_years[i] > 0
-            cost_expansion[i, 1:delay_years[i]] .= 1e9 # Not possible to expand, given the delay in years   
-        end
-    end
-
     # Big M effect, should be reduced towards the future?
     bigM_cost_Cu = bigM_cost_Cu .* (1 ./ discounter')
     bigM_cost_Ni = bigM_cost_Ni .* (1 ./ discounter')
@@ -165,6 +156,7 @@ function runOptimization(
     @variable(model, z_li[1:t_size] >= 0)  # Slack to match balance
 
     # Fix deposits already open 
+    status = deposit[!, :status]
     for d in 1:d_size
         if status[d] == "Production"
             fix(w[d, 1], 1; force=true) # open at year 1
@@ -176,6 +168,15 @@ function runOptimization(
     end
 
     mines_alreadyOpen = count(s -> s == "Production" || s == "Development", status)
+
+    delay_years = deposit[!, :delay_years] # delay in expansion
+    for i in 1:d_size
+        if delay_years[i] > 0
+            for t in 1:delay_years[i]
+                fix(y[i, t], 0.0; force=true)
+            end
+        end
+    end
 
     # Define expression called multiple times in the function (abstraction)
     # Cost expression for objective function
@@ -266,7 +267,7 @@ function runOptimization(
     @constraint(
         model,
         c4[d in 1:d_size, t in 1:t_size],
-        sum(y[d, t1] for t1 in 1:t) + prod_rate[d] <= sum(w[d, t1] for t1 in 1:t) * max_prod_rate[d]
+        (sum(y[d, t1] for t1 in 1:t) + prod_rate[d]) / max_prod_rate[d] <= sum(w[d, t1] for t1 in 1:t)
     )
     # Open mine only once
     @constraint(model, c5[d in 1:d_size], sum(w[d, t] for t in 1:t_size) <= 1)

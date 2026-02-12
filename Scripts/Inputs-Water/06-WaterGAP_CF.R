@@ -140,13 +140,13 @@ for (j in 1:nrow(combos)) {
   rm(basin_df_down)
   # DEBUG
   # Check totals, pick one sceario
-  basin_df |>
-    filter(year == 2025) |>
-    summarise(
-      total_qtot = sum(qtot, na.rm = TRUE),
-      total_ewr_base = sum(ewr_m3_month_base, na.rm = TRUE),
-      total_use = sum(atotuse, na.rm = TRUE)
-    )
+  # basin_df |>
+  #   filter(year == 2025) |>
+  #   summarise(
+  #     total_qtot = sum(qtot, na.rm = TRUE),
+  #     total_ewr_base = sum(ewr_m3_month_base, na.rm = TRUE),
+  #     total_use = sum(atotuse, na.rm = TRUE)
+  #   )
   # Aware 2.0 vs this data:
   # actavail_total = 1.73E14 vs 9.56E13 (this data)
   # EWR total = 5.82E13 (same as this data)

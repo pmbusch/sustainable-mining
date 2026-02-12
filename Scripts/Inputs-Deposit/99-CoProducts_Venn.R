@@ -8,11 +8,9 @@ source('Scripts/00-Libraries.R', encoding = 'UTF-8')
 
 # LOAD AND MERGE -----------
 
-df <- read.csv("Parameters/CuNiCo_Deposit.csv")
-
-names(df)
-
+df <- read.csv("Parameters/Intermediate/All_Deposit_SP.csv")
 df <- df |>
+  filter(resources_Copper + resources_Cobalt + resources_Nickel > 0) |>
   mutate(
     PRIMARY_COMMODITY = if_else(PRIMARY_COMMODITY %in% c("Copper", "Nickel", "Cobalt"), PRIMARY_COMMODITY, "Other")
   )
@@ -23,27 +21,6 @@ df <- df |>
 library(ggVennDiagram)
 
 # Database is already on format one deposit per row, with columns indicated presence of minerals
-prop_db <- df %>% distinct(ID, , PRIMARY_COMMODITY)
-prop_ids <- df %>% distinct(ID)
-prop_presence <- prop_ids %>%
-  left_join(
-    prop_db %>% filter(Database == "Copper") %>% distinct(PROP_ID) %>% mutate(in_copper_db = TRUE),
-    by = "PROP_ID"
-  ) %>%
-  left_join(
-    prop_db %>% filter(Database == "Nickel") %>% distinct(PROP_ID) %>% mutate(in_nickel_db = TRUE),
-    by = "PROP_ID"
-  ) %>%
-  left_join(
-    prop_db %>% filter(Database == "Cobalt") %>% distinct(PROP_ID) %>% mutate(in_cobalt_db = TRUE),
-    by = "PROP_ID"
-  ) %>%
-  left_join(
-    prop_db %>% filter(PRIMARY_COMMODITY == "Other") %>% distinct(PROP_ID) %>% mutate(in_other_db = TRUE),
-    by = "PROP_ID"
-  ) %>%
-  mutate(across(starts_with("in_"), ~ replace_na(.x, FALSE)))
-
 prop_presence <- df |>
   mutate(
     in_copper_db = grade_resource_Copper > 0,

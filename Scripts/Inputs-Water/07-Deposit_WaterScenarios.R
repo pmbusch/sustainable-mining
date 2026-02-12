@@ -41,11 +41,25 @@ for (i in 1:nrow(combos)) {
   cm <- combos$climate_model[i]
   cat("\n--- [", i, "/", nrow(combos), "]", sc, "-", cm, "---\n")
 
+  cf_loop <- basin_cf[
+    scenario == sc & climate_model == cm,
+    .(Basin_ID, period_label, cf, availability_m3_yr, demand_m3_yr)
+  ]
+
+  # cut off of basins to avoid numerical issues
+  cutoff <- 1e6 # 1 million m3/yr per basin
+  cf_loop <- cf_loop %>%
+    rename(aware_available = availability_m3_yr, aware_demand = demand_m3_yr) %>%
+    mutate(gross_available = aware_available + aware_demand) |>
+    mutate(
+      gross_available = if_else(abs(gross_available) > cutoff, gross_available, 0),
+      aware_available = gross_available - aware_demand,
+      gross_available = NULL
+    )
+
   # Filter and pivot wide by period: one row per Basin_ID, columns per period
   # fmt: skip
-  cf_wide <- basin_cf[scenario == sc & climate_model == cm,
-                       .(Basin_ID, period_label, cf, availability_m3_yr, demand_m3_yr)] %>%
-    rename(aware_available=availability_m3_yr,aware_demand=demand_m3_yr) %>%
+  cf_wide <- cf_loop %>%
     mutate(period_label=str_replace(period_label, "–", "_")) %>%
     pivot_wider(
       names_from = period_label,

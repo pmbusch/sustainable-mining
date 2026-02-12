@@ -3,7 +3,7 @@
 # Otherwise reads from Parameters/WaterScenarios/<climate_scenario>.csv
 using CSV, DataFrames, Statistics
 
-function load_climate_scenario(deposit, depositAll, climate_scenario, d_size, t_size)
+function load_climate_scenario(deposit, climate_scenario, d_size, t_size)
     years = 2025:(2024 + t_size)
 
     if climate_scenario == "none"
@@ -11,7 +11,7 @@ function load_climate_scenario(deposit, depositAll, climate_scenario, d_size, t_
         wf_static = deposit[!, :water_footprint] ./ 1e3 #  divide by 1e6 to million m3, multiply by 1e3 to get to kton ore processed
         water_footprint_dt = repeat(wf_static, 1, t_size)
 
-        aa_static = combine(groupby(depositAll, :Basin_ID), :aware_available => mean => :aware_available)
+        aa_static = combine(groupby(deposit, :Basin_ID), :aware_available => mean => :aware_available)
         aa_static.aware_available ./= 1e6 # million m3
         aa_static.aware_available .= max.(aa_static.aware_available, 0.0)
         aware_available_dt = Dict((r.Basin_ID, t) => r.aware_available for r in eachrow(aa_static) for t in 1:t_size)
@@ -36,7 +36,7 @@ function load_climate_scenario(deposit, depositAll, climate_scenario, d_size, t_
         y_start = parse(Int, parts[end - 1])
         for (ti, y) in enumerate(years)
             if y >= y_start && (y < y_end || (y == y_end && y_end == last(years)))
-                water_footprint_dt[:, ti] .= scenario_df[!, col]
+                water_footprint_dt[:, ti] .= scenario_df[!, col] ./ 1e3 # divide by 1e6 to million m3, multiply by 1e3 to get to kton ore processed
             end
         end
     end
