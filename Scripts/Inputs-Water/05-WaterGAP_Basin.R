@@ -103,7 +103,7 @@ file_info <- tibble(file_path = nc_files) %>%
     variable = str_extract(filename, "(?<=default_)[^_]+")
   ) %>%
   # Keep only qtot and atotuse (monthly files)
-  filter(variable %in% c("qtot", "atotuse"))
+  filter(variable %in% c("qtot", "atotuse", "dis"))
 
 cat("Files to process:", nrow(file_info), "\n")
 cat("Scenarios:", paste(unique(file_info$scenario), collapse = ", "), "\n")
@@ -154,7 +154,7 @@ for (i in 1:nrow(file_info)) {
     next
   }
 
-  cat("  Grid rows loaded:", nrow(grid_data), "\n")
+  cat("  Grid rows loaded:", nrow(grid_data) / 1e6, "M\n")
 
   # Convert to data.table for speed
   grid_dt <- as.data.table(grid_data)
@@ -163,10 +163,14 @@ for (i in 1:nrow(file_info)) {
 
   # Join with area data for unit conversion (kg/m2/s -> m3/month)
   grid_dt <- area_grid_dt[grid_dt, on = .(lon, lat)]
-  grid_dt[, `:=`(
-    seconds_in_month = days_in_month(date) * 86400,
-    value_m3_month = (value * area_m2 / 1000) * days_in_month(date) * 86400
-  )]
+  grid_dt[, seconds_in_month := days_in_month(date) * 86400]
+  grid_dt[,
+    value_m3_month := if (current_variable == "dis") {
+      value * seconds_in_month
+    } else {
+      (value * area_m2 / 1000) * seconds_in_month
+    }
+  ]
   grid_dt[, c("value", "area_m2", "date", "time_idx", "seconds_in_month") := NULL]
 
   # Join with basin lookup and aggregate (weighted sum by overlap fraction)

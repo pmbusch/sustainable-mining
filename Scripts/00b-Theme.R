@@ -44,11 +44,12 @@ theme_pb <- function(preset = c("small", "wide"), base_family = "", text_col = "
       axis.ticks = ggplot2::element_line(size = 0.35, colour = "black"),
 
       # Facets / strips
-      strip.background = ggplot2::element_rect(fill = "grey90", colour = NA),
+      strip.background = ggplot2::element_rect(fill = NA, colour = NA),
       strip.text = ggplot2::element_text(
         size = sz_strip_text,
         colour = text_col,
-        margin = ggplot2::margin(t = 2, b = 2)
+        margin = ggplot2::margin(t = 2, b = 2),
+        face = "bold"
       ),
 
       # Legend

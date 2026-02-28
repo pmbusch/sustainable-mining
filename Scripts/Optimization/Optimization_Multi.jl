@@ -35,6 +35,8 @@ function runOptimization(
     bigM_cost_Cu=14000 * 1.5 / 1e3,
     bigM_cost_Ni=48000 * 1.5 / 1e3,
     bigM_cost_Co=82000 * 1.5 / 1e3,
+    mine_life = 15.0, # in years
+    fraction_notRecovered = 0.2, # cost not recoverd for terminal life
 )
     d_size = size(deposit, 1)
     t_size = size(demand, 1)
@@ -123,9 +125,6 @@ function runOptimization(
     cost_expansion = cost_expansion .* (1 ./ discounter')
 
     # Salvage or terminal values for infrastructure development
-    mine_life = 15.0
-    fraction_notRecovered = 0.2 # cost not recoverd for terminal life
-
     years = 2025:2050
     years_to_end = 2050 .- years
     remaining_life = mine_life .- years_to_end
@@ -314,7 +313,10 @@ function runOptimization(
             ("Slack cost Nickel", bigM_cost_Ni[1]),
             ("Slack cost Cobalt", bigM_cost_Co[1]),
             ("Slack cost Lithium", bigM_cost_Li[1]),
-        ],
+            ("Mine Life (years)", mine_life),
+            ("Fraction of cost not recovered at end of mine life", fraction_notRecovered),
+            ("Use hyperbolic discount rate", hyperbolic),
+                   ],
         [:Parameter, :Value],
     )
     CSV.write(url_file, inputs_text)
@@ -346,7 +348,7 @@ function runOptimization(
         cost_con = @constraint(model, cost_expr <= 1.15 * opt_val)  # create once
 
         # cost degradation
-        for epsilon_cost in [0.15, 0.125, 0.1, 0.08, 0.06, 0.05, 0.04, 0.03, 0.02, 0.01, 0.005]
+        for epsilon_cost in [0.25,0.2,0.15, 0.125, 0.1, 0.08, 0.06, 0.05, 0.04, 0.03, 0.02, 0.01, 0.005]
             # for epsilon_cost in [0.1, 0.05, 0.03, 0.01]
             # Cost constraint
             set_normalized_rhs(cost_con, (1 + epsilon_cost) * opt_val) # updated

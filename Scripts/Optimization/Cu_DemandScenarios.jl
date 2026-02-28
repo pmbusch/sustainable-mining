@@ -12,7 +12,7 @@ using LinearAlgebra
 
 # Load built-in optimization function
 # other potential path: Scripts/Supply Model/Optimization/
-include("Optimization_MGA.jl")
+include("Optimization_Multi.jl")
 
 # Load data
 depositAll = DataFrame(CSV.File("Parameters/Cu_Deposit.csv"))

@@ -26,7 +26,7 @@ sp <- sp |> filter(!str_detect(file_name, "Eps"))
 
 ## Time series ------------
 sp_value <- sp |> filter(abs(shadow) > 0) |> filter(Scenario == "SPS") |> mutate(shadow = -shadow) # convert to savings
-length(unique(sp_value$Basin_ID)) # 28
+length(unique(sp_value$Basin_ID)) # 26
 
 # Pick 14 largest as basins
 sel_basins <- sp_value |> arrange(desc(shadow)) |> pull(Basin_ID) |> unique()
@@ -51,6 +51,7 @@ p_line <- ggplot(sp_value, aes(Year, shadow, col = Basin_ID, group = Basin_ID)) 
   annotate("text", x = 2027, y = 0, label = paste0("'Desalination ~' * " ,desalination_cost, " * ' USD/m'^3"), color = "black", size = 7*5/14*0.8,parse=T,hjust=0) +
   # scale_y_continuous(trans = "log10", labels = dollar_format(big.mark = " ", prefix = "$")) +
   scale_y_continuous(limits = c(0, 150), labels = dollar_format(big.mark = " ", prefix = "$")) +
+  xlim(2030, 2050) +
   scale_color_manual(values = colors_basins) +
   theme_pb_wide() +
   labs(x = "", y = "", title = expression("Avoided cost per extra " * m^3 * "of water allowed in basin")) +
@@ -74,37 +75,51 @@ cf_map <- cf_map |> filter(Basin_ID %in% sel_basins)
 cf_map$Basin_ID <- factor(cf_map$Basin_ID)
 
 map1 <- map_data('world')
+
+
+# Bounding box to zoom into basins with data
+bbox <- st_bbox(cf_map)
+pad <- 5 # degrees of padding
 pmap <- ggplot(cf_map) +
   # base map
   theme_minimal(8) +
   geom_polygon(data = map1, mapping = aes(x = long, y = lat, group = group), col = 'gray', fill = "white") +
   # Water stress map
   geom_sf(data = cf_map, aes(fill = Basin_ID), color = "grey30", linewidth = 0.1) +
-  coord_sf(xlim = c(-140, 160), ylim = c(-60, 70)) +
-  # scale_fill_distiller(
-  #   name = expression("Shadow Price basin (USD/" * m^3 * ")"),
-  #   palette = "OrRd",
-  #   na.value = "white",
-  #   trans = "log10",
-  #   direction = 1,
-  #   breaks = seq(0, 30, 5),
-  #   guide = guide_colorbar(direction = "horizontal", barwidth = unit(6, "cm"), barheight = unit(0.25, "cm"), order = 1)
-  # ) +
+  coord_sf(xlim = c(bbox["xmin"] - pad, bbox["xmax"] + pad), ylim = c(bbox["ymin"] - pad, bbox["ymax"] + pad)) +
   scale_fill_manual(values = colors_basins) +
   theme(
     panel.grid = element_blank(),
     legend.position = "none",
-    legend.background = element_rect(color = "black"),
-    legend.text = element_text(size = 6),
-    panel.border = element_rect(color = "black", fill = NA, linewidth = 0.6)
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title = element_blank(),
+    panel.border = element_blank()
   )
 pmap
 
+# South America inset map
+pmap_sa <- ggplot(cf_map) +
+  theme_minimal(8) +
+  geom_polygon(data = map1, mapping = aes(x = long, y = lat, group = group), col = 'gray', fill = "white") +
+  geom_sf(data = cf_map, aes(fill = Basin_ID), color = "grey30", linewidth = 0.1) +
+  coord_sf(xlim = c(-75, -60), ylim = c(-40, -15)) +
+  scale_fill_manual(values = colors_basins) +
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "none",
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title = element_blank(),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 0.4)
+  )
+pmap_sa
 
 library(cowplot)
-plot_grid(pmap, p_line, nrow = 1)
+plot_grid(pmap, pmap_sa, p_line, nrow = 1)
 
 ## total resources by basin -------------
+minerals_colors <- c("Lithium" = "#00BFFF", "Copper" = "#2E8B57", "Nickel" = "#4D4D4D", "Cobalt" = "#8A2BE2")
 
 deposit <- read.csv("Parameters/Deposit.csv")
 deposit <- deposit |>
@@ -121,25 +136,40 @@ deposit <- deposit |>
   pivot_longer(c(-Basin_ID), names_to = 'Mineral', values_to = 'resources') |>
   mutate(Mineral = str_remove(Mineral, "resources_")) |>
   mutate(resources = resources / 1e6) # million tons
+
+# Add continent info via dict_region
+dict_region <- read_excel("Inputs/Dictionaries/Dict_Countries_SP.xlsx", sheet = "Dict")
+basin_continent <- read.csv("Parameters/Deposit.csv") |>
+  select(Basin_ID, country) |>
+  distinct() |>
+  left_join(dict_region, by = "country") |>
+  select(Basin_ID, Continent) |>
+  distinct()
+deposit <- deposit |> left_join(basin_continent, by = "Basin_ID")
+
+# Order basins by continent then by sel_basins order
 deposit$Basin_ID <- factor(deposit$Basin_ID, levels = rev(sel_basins))
 
 # Color by basin
 deposit$X <- -1
 
-p_bar <- ggplot(deposit, aes(Basin_ID, resources, fill = Mineral)) +
+p_bar <- ggplot(deposit, aes(y = Basin_ID, x = resources, fill = Mineral)) +
   geom_col() +
-  geom_point(aes(y=X,col=Basin_ID),size=3,show.legend = FALSE) +
-  # fmt: skip
-  annotate("text", x = length(sel_basins), y = 10, label = "Basins", color = "black", size = 7*5/14*0.8,parse=T,hjust=0) +
+  geom_point(aes(x=X,col=Basin_ID),size=3,show.legend = FALSE) +
   scale_color_manual(values = colors_basins, guide = "none") +
-  coord_flip() +
+  scale_fill_manual(values = minerals_colors) +
+  ggforce::facet_col(~Continent, scales = "free_y", space = "free") +
   theme_pb_wide() +
-  labs(x = "", y = "Contained Mineral resources per basin, in million tons") +
+  labs(y = "", x = "Contained Mineral resources per basin, in million tons") +
   theme(legend.position = c(0.7, 0.3), axis.text.y = element_blank(), axis.ticks.y = element_blank())
 p_bar
 
 
-plot_grid(plot_grid(pmap, p_bar, ncol = 1), p_line, nrow = 1)
+plot_grid(
+  plot_grid(plot_grid(pmap, pmap_sa, nrow = 1, rel_widths = c(0.8, 0.2)), p_bar, ncol = 1, rel_heights = c(.3, .7)),
+  p_line,
+  nrow = 1
+)
 
 # fmt: skip
 ggsave("Figures/Basin_ShadowPrices.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 8.7*3, height = 8.7*2)
@@ -327,7 +357,9 @@ sp_waterSave |>
     x = "",
     y = "",
     col = "Climate Pathway",
-    title = expression("Shadow Price of mineral demand constraints (Freshwater impact in m3 saved per ton of mineral)")
+    title = expression(
+      "Shadow Price of mineral demand constraints (Freshwater impact in" ~ m^3 ~ "-eq saved per ton of mineral)"
+    )
   ) +
   theme(legend.position = c(0.8, 0.6))
 

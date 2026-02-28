@@ -32,6 +32,9 @@ cat("Scenarios:", paste(unique(basin_cf$scenario), collapse = ", "), "\n")
 cat("Climate models:", paste(unique(basin_cf$climate_model), collapse = ", "), "\n")
 cat("Periods:", paste(unique(basin_cf$period_label), collapse = ", "), "\n")
 
+# remove pi-control as it a scenario with no climate forcing
+basin_cf <- basin_cf |> filter(scenario != "picontrol")
+
 # Loop over scenario x climate_model ----
 combos <- unique(basin_cf[, .(scenario, climate_model)])
 cat("\n=== PROCESSING", nrow(combos), "COMBINATIONS ===\n")
