@@ -537,15 +537,20 @@ names(p_platinum)[1:2] <- c("Date", "Price")
 # fmt: skip
 p_silver <- read_excel("Inputs/SP/Prices/SPGlobal_PriceChart-Silver(Chart)_28-Jan-2026.xlsx", sheet = "Data", range = "A8:B1312") |> mutate(Mineral="Silver")
 names(p_silver)[1:2] <- c("Date", "Price")
+# fmt: skip
+p_lithium <- read_excel("Inputs/SP/Prices/SPGlobal_PriceChart-Lithium(Chart)_28-Jan-2026.xlsx", sheet = "Data", range = "A9:B370") |> mutate(Mineral="Lithium")
+names(p_lithium)[1:2] <- c("Date", "Price")
+p_lithium$Price <- as.numeric(p_lithium$Price) * 5.323 # from USD/LCE to USD/Li
 
 # Average of whole period (2021-2025)
-(prices <- rbind(p_cu, p_ni, p_co, p_zinc, p_gold, p_palladium, p_platinum, p_silver) |>
+(prices <- rbind(p_cu, p_ni, p_co, p_zinc, p_gold, p_palladium, p_platinum, p_silver, p_lithium) |>
   mutate(Price = as.numeric(Price)) |>
   mutate(Price = if_else(Mineral %in% c("Gold", "Palladium", "Platinum", "Silver"), Price * 35274, Price)) |> # from $/oz to $/ton
   group_by(Mineral) |>
   reframe(price_avg = mean(Price, na.rm = T)))
-rm(p_cu, p_ni, p_co, p_zinc, p_gold, p_palladium, p_platinum, p_silver)
+rm(p_cu, p_ni, p_co, p_zinc, p_gold, p_palladium, p_platinum, p_silver, p_lithium)
 
+write.csv(prices, "Parameters/MineralPrices.csv", row.names = F)
 
 # Play with the shapes long/wide format cleverly
 share_rev2 <- df |>

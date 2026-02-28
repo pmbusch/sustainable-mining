@@ -127,6 +127,6 @@ ggplot(data_fig, aes(Year, ktons / 1e3)) +
 
 
 # fmt: skip
-ggsave("Figures/MineralDemand.png", ggplot2::last_plot(),units = 'cm', dpi = 600, width = 8.7*2, height = 8.7)
+ggsave("Figures/Demand/MineralDemand.png", ggplot2::last_plot(),units = 'cm', dpi = 600, width = 8.7*2, height = 8.7)
 
 # EoF

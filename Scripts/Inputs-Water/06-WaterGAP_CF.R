@@ -29,12 +29,15 @@ intermediate_dir <- file.path(input_dir_watergap, "intermediate")
 cat("\n=== LOADING AWARE REFERENCE DATA ===\n")
 aware_file <- file.path(input_dir_aware, "AWARE20_Intermediate_Variables.xlsx")
 
-ewr_data <- read_excel(aware_file, sheet = "EWR")
-area_data <- read_excel(aware_file, sheet = "basin_area")
+ewr_data <- read_excel(aware_file, sheet = "EWR") # m3/month
+area_data <- read_excel(aware_file, sheet = "basin_area") # m2
+actAvail_data <- read_excel(aware_file, sheet = "ActAvail_1990_2019") # m3/month
 
 cat("EWR basins:", nrow(ewr_data), "\n")
 
+world_amd <- 0.02410 # m3/m2 month from AWARE 2.0 paper (10.1111/jiec.70023)
 
+# Flat to monthly list
 ewr_monthly <- ewr_data %>%
   pivot_longer(cols = -Basin_ID, names_to = "month_name", values_to = "ewr_m3_month_base") %>%
   mutate(
@@ -44,6 +47,17 @@ ewr_monthly <- ewr_data %>%
   ) %>%
   filter(!is.na(month)) %>%
   select(Basin_ID, month, ewr_m3_month_base)
+
+actAvail_monthly <- actAvail_data |>
+  pivot_longer(cols = -Basin_ID, names_to = "month_name", values_to = "actavail_m3_month") %>%
+  mutate(
+    month = match(tolower(month_name), tolower(month.abb)),
+    month = if_else(is.na(month), match(tolower(month_name), tolower(month.name)), month),
+    month = if_else(is.na(month), as.integer(str_extract(month_name, "\\d+")), month)
+  ) %>%
+  filter(!is.na(month)) %>%
+  select(Basin_ID, month, actavail_m3_month)
+
 
 # Sub-basin ID Tree from AWARE 2.0
 tree <- read_excel(aware_file, "additional_information")
@@ -107,7 +121,8 @@ for (j in 1:nrow(combos)) {
   basin_df <- as_tibble(basin_dt) %>%
     left_join(area_data, by = "Basin_ID") %>%
     left_join(ewr_monthly, by = c("Basin_ID", "month")) %>%
-    filter(!is.na(qtot), !is.na(ewr_m3_month_base), !is.na(area)) %>%
+    left_join(actAvail_monthly, by = c("Basin_ID", "month")) %>%
+    filter(!is.na(qtot), !is.na(ewr_m3_month_base), !is.na(area), !is.na(actavail_m3_month)) %>%
     mutate(atotuse = tidyr::replace_na(atotuse, 0))
 
   rm(basin_dt)
@@ -116,6 +131,35 @@ for (j in 1:nrow(combos)) {
 
   # EWR is simply constant
   basin_df <- basin_df %>% mutate(ewr_m3_month = ewr_m3_month_base)
+
+  # Scaling factor for water availability (runoff) at basin - will match AWARE for the initial period
+  scaling_factor <- basin_df %>%
+    filter(year >= 2025, year <= 2030) %>% # 2025-2030 period
+    group_by(Basin_ID) %>%
+    summarise(
+      sum_qtot = sum(qtot, na.rm = TRUE),
+      sum_aware = sum(actavail_m3_month, na.rm = TRUE),
+      alpha_raw = sum_aware / sum_qtot,
+      .groups = "drop"
+    ) %>%
+    mutate(
+      alpha = case_when(
+        sum_qtot == 0 ~ NA_real_, # no runoff case
+        alpha_raw < 0.2 ~ 0.2, # limits to the scaling factor
+        alpha_raw > 5 ~ 5,
+        TRUE ~ alpha_raw
+      ),
+      flag = case_when(sum_qtot == 0 ~ "no_qtot", alpha_raw < 0.2 ~ "too_low", alpha_raw > 5 ~ "too_high", TRUE ~ "ok")
+    )
+  table(scaling_factor$flag) / nrow(scaling_factor) * 100 # Approx 95% OK, 3% too high, 2% too low, <0.1% no qtot
+  # fmt: skip
+  # ggplot(scaling_factor, aes(alpha)) + geom_histogram(bins = 100, fill = "blue", col = "black") + xlim(0, 3)
+
+  # Scale qtot by basin
+  basin_df <- basin_df %>%
+    left_join(scaling_factor %>% dplyr::select(Basin_ID, alpha,flag), by = "Basin_ID") %>%
+    mutate(qtot =  if_else(flag == "no_qtot", actavail_m3_month, qtot * alpha)) %>%
+    select(-alpha, -flag)
 
   # Calculate monthly AMD (m/month) = max(0, qtot - EWR - demand) / area
   basin_df <- basin_df %>%
@@ -135,10 +179,12 @@ for (j in 1:nrow(combos)) {
     ) |>
     ungroup() |>
     mutate(upstream_basins = NULL)
+
   # Join back
   basin_df <- rbind(filter(basin_df, !(Basin_ID %in% basins_with_upstream)), basin_df_down)
   rm(basin_df_down)
-  # DEBUG
+
+  # DEBUG ONLY
   # Check totals, pick one sceario
   # basin_df |>
   #   filter(year == 2025) |>
@@ -152,24 +198,26 @@ for (j in 1:nrow(combos)) {
   # EWR total = 5.82E13 (same as this data)
   # HWC: 1.51E12 (use) vs 1.48E12 (this data)
 
+  # DEPRECIATED - better use constant AMD from AWARE 2.0 to allow for comparisons across years and scenarios
   # Calculate world weighted average AMD per year-month
-  basin_df |> group_by(year) |> reframe(amd = mean(amd_m_month))
-  world_amd <- basin_df %>%
-    group_by(year, month) %>%
-    reframe(
-      total_atotuse = sum(atotuse, na.rm = TRUE),
-      amd_world = if_else(total_atotuse > 0, weighted.mean(amd_m_month, atotuse, na.rm = TRUE), 0),
-      .groups = "drop"
-    ) %>%
-    select(year, month, amd_world)
-  world_amd |> filter(year == 2025) |> pull(amd_world) |> mean() # check world AMD in 2025, should be around 0.024 m3//m2/month (is 0.022)
-  max(basin_df$amd_m_month) # 2.9 vs 4.15 in AWARE 2.0
+  # basin_df |> group_by(year) |> reframe(amd = mean(amd_m_month))
+  # world_amd <- basin_df %>%
+  #   group_by(year, month) %>%
+  #   reframe(
+  #     total_atotuse = sum(atotuse, na.rm = TRUE),
+  #     amd_world = if_else(total_atotuse > 0, weighted.mean(amd_m_month, atotuse, na.rm = TRUE), 0),
+  #     .groups = "drop"
+  #   ) %>%
+  #   select(year, month, amd_world)
+  # world_amd |> filter(year == 2025) |> pull(amd_world) |> mean() # check world AMD in 2025, should be around 0.024 m3//m2/month (is 0.022)
+  # max(basin_df$amd_m_month) # 2.9 vs 4.15 in AWARE 2.0
+  # END DEPRECIATED
 
   # Calculate monthly CFs
   basin_cf_monthly <- basin_df %>%
-    left_join(world_amd, by = c("year", "month")) %>%
+    # left_join(world_amd, by = c("year", "month")) %>% # DEPRECEATED
     mutate(
-      cf_raw = amd_world / amd_m_month,
+      cf_raw = world_amd / amd_m_month,
       cf_raw = if_else(is.finite(cf_raw), cf_raw, 100),
       cf = pmax(0.1, pmin(100, cf_raw))
     )
@@ -196,7 +244,7 @@ for (j in 1:nrow(combos)) {
 
   yearly_list[[j]] <- basin_yearly
 
-  rm(basin_df, basin_cf_monthly, world_amd, basin_yearly)
+  rm(basin_df, basin_cf_monthly, basin_yearly)
   gc()
 }
 

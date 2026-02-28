@@ -24,9 +24,13 @@ region_colors <- c(
 )
 
 
+minerals_colors <- c("Lithium" = "#00BFFF", "Copper" = "#2E8B57", "Nickel" = "#4D4D4D", "Cobalt" = "#8A2BE2")
+
+
 # Names of scenarios
 Scenario <- c("SPS", "APS", "NZE")
 scen_name <- c("Stated Policies Scenario", "Announced Pledges Scenario", "Net Zero Emissions Scenario")
+demand_colors <- c("SPS" = "#4E5A6A", "APS" = "#E69F00", "NZE" = "#009E73")
 
 # scens_names <- c(
 #   "(1) Reference",
