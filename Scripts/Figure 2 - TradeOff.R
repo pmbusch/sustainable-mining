@@ -1,7 +1,8 @@
-# Trade off cost and water
+# Figure 2 - Trade off Cost and Freshwater Impacts
+# Pareto curve: every point in the curve is pareto optimal, cannot improve one objective (cost) without worsening the other (water impact)
 # PBH Nov 2025
 
-# Load -------------
+# LOAD -------------
 
 source('Scripts/00-Libraries.R', encoding = 'UTF-8')
 source('Scripts/00a-Common Variables.R', encoding = 'UTF-8')
@@ -20,7 +21,7 @@ deposit <- read.csv("Parameters/Deposit.csv")
   mutate(label_dem = paste0(Scenario, " ", round(mtons, 0), " Mt")))
 
 
-# Demand Curve --------------------
+# a - BY DEMAND SCENARIOS  --------------------
 # Store results from optimization run
 (runs <- list.files("Results/Optimization/DemandScenario", pattern = "Metrics.*", recursive = T, full.names = TRUE))
 # (runs <- list.files(
@@ -107,22 +108,31 @@ params <- fits %>%
 df <- df %>%
   left_join(params, by = "Scenario") %>%
   mutate(cost_fitted = a + b * log(Water_Impact), slope = -b / Water_Impact) |> # negative slope: cost increases as Water_Impact decreases
-  mutate(label_slope = if_else(metric %in% c("0%", "4%", "15%"), paste0("", round(slope, 2), " * ' USD/m'^3"), ""))
+  mutate(
+    label_slope = if_else(metric %in% c("0%", "5%", "10%", "25%"), paste0("", round(slope, 2), " * ' USD/m'^3"), "")
+  )
 
 # Better get slope as difference between points
 df <- df |>
   arrange(Scenario, metric) |>
   mutate(slope = -(Cost - lag(Cost)) / (Water_Impact - lag(Water_Impact))) |>
-  mutate(label_slope = if_else(metric %in% c("0.5%", "4%", "15%"), paste0("", round(slope, 2), " * ' USD/m'^3"), ""))
+  mutate(
+    label_slope = if_else(metric %in% c("1%", "5%", "10%", "25%"), paste0("", round(slope, 2), " * ' USD/m'^3"), "")
+  )
 
-# Get % of water red between first point
+# Get % of water redudction between first point
 base_water <- df |> filter(metric == "0%") |> rename(water_base = Water_Impact) |> dplyr::select(Scenario, water_base)
 df <- df |>
   filter(!str_detect(metric, "Water")) |>
   left_join(base_water) |>
   mutate(water_red_pct = (Water_Impact - water_base) / water_base * 100) |>
   mutate(
-    label_water_red = if_else(metric %in% c("0%", "1%", "3%", "4%", "8%"), "", paste0("", round(water_red_pct), "%"))
+    label_water_red = if_else(metric %in% c("0%", "1%", "3%", "4%", "8%"), "", paste0("", round(water_red_pct), "%")),
+    label_water_red_full = if_else(
+      metric %in% c("1%", "5%", "15%", "25%"),
+      paste0("Cost: +", metric, " ~ Water: ", round(water_red_pct), "%"),
+      ""
+    )
   )
 
 
@@ -138,51 +148,93 @@ df |>
   )
 
 
-# per ton of
-# df <- df |>
-#   mutate(
-#     Water = Water * 1e3 / mtons, # m3 per ton
-#     Cost = Cost * 1e3 / mtons # USD per ton
-#   )
-
 # FIGURE - Pareto curves: non-dominated solutions
 
 desalination_cost <- 0.5 # USD per m3
 # pick closest point to slope
 df_close <- df |> group_by(Scenario) |> slice_min(abs(slope - desalination_cost), n = 1)
 
+# Scenario name
+df <- df |>
+  mutate(
+    scen_name = case_when(
+      Scenario == "APS" ~ "Announced Pledges Scenario",
+      Scenario == "NZE" ~ "Net Zero Emissions\nDemand Scenario",
+      Scenario == "SPS" ~ "Stated Policies Scenario",
+      T ~ Scenario
+    )
+  )
+
 
 data_fig <- df |> filter(!str_detect(metric, "Water"))
 range(data_fig$Water_Impact)
 range(data_fig$Cost)
 
+# optimal at NZE
+df_opt <- df |> filter(metric == "0%") |> filter(Scenario == "NZE")
+df_slope_nze <- df |> filter(Scenario == "NZE") |> filter(metric == "25%")
+
 ggplot(data_fig, aes(Water_Impact, Cost, col = Scenario)) +
   geom_line() +
-  geom_point(size=0.5) +
+  geom_point(size=0.3) +
   # fmt: skip
-  geom_text(data = filter(data_fig, metric == "0%"),aes(label = Scenario),nudge_y = -50,nudge_x=-200,size = 7 * 5 / 14 * 0.8,hjust = 1) +
+  geom_text(data = filter(data_fig, metric == "0%"),aes(label = scen_name),nudge_y = -60*c(1,2,1),nudge_x=0,size = 7 * 5 / 14 * 0.8,hjust = 0.5) +
   # fmt: skip
-  geom_text(data=filter(data_fig,str_detect(Scenario,"NZE")), aes(label=lab_metric),col="#4d4d4d",nudge_y=45*c(-1,1,1,rep(1,11)), size=7*5/14*0.8,hjust=0) +
+  # geom_text(data=filter(data_fig,str_detect(Scenario,"NZE")), aes(label=lab_metric),col="#4d4d4d",nudge_y=45*c(-1,1,1,rep(1,11)), size=7*5/14*0.8,hjust=0) +
   # fmt: skip
-  geom_text_repel(aes(label=label_water_red),col="darkblue",nudge_y=-45, size=7*5/14*0.8,hjust=0,fontface="italic") +
+  # geom_text(data=filter(data_fig,str_detect(Scenario,"APS")), aes(label=label_water_red_full),col="#4d4d4d",nudge_y=45, size=7*5/14*0.8,hjust=0) +
   # fmt: skip
-  geom_text(data=filter(data_fig,str_detect(Scenario,"SPS")), aes(label=label_slope),col="#6c8364",nudge_y=45, size=7*5/14*0.8,parse=T,hjust=0) +
+  # geom_text_repel(aes(label=label_water_red),col="darkblue",nudge_y=-45, size=7*5/14*0.8,hjust=0,fontface="italic") +
   # fmt: skip
-  geom_segment(data=df_close,aes(x=Water_Impact+1000/desalination_cost/2,xend=df_close$Water_Impact-1000/desalination_cost/2,y=df_close$Cost-1000/2,yend=df_close$Cost+1000/2), linetype="dashed", color="#0072B2") +
+  geom_text(data=filter(data_fig,str_detect(Scenario,"NZE")), aes(label=label_slope),col="#6c8364",nudge_y=45, size=7*5/14*0.8,parse=T,hjust=0) +
+  # fmt: skip
+  annotate("text", x=df_slope_nze$Water_Impact+1450,y=df_slope_nze$Cost+30,col="#6c8364",label="Implied Cost of Water Reduction",size=7*5/14*0.8,hjust=0) +
+  geom_point(data=filter(data_fig,str_detect(Scenario,"NZE"),label_slope!=""),col="#6c8364",size=0.6) +
+  # fmt: skip
+  geom_segment(data=df_close,aes(x=Water_Impact+1000/desalination_cost/2,xend=df_close$Water_Impact-1000/desalination_cost/2,y=df_close$Cost-1000/2,yend=df_close$Cost+1000/2), linetype="dashed", color="#0072B2",linewidth=0.25) +
   geom_point(data=df_close,col="#0072B2",size=1) +
   # fmt: skip
-  annotate("text", x = df_close$Water_Impact[2]-400, y = df_close$Cost[2]+400, label = paste0("'Desalination ~' * " ,desalination_cost, " * ' USD/m'^3"), color = "#0072B2", size = 7*5/14*0.8,parse=T,hjust=0) +
-  labs(x = expression("Total Freshwater Impact (billion " ~ m^3 ~ "-eq)"), y = "Total Cost (billion USD)", col = "") +
+  annotate("text", x = df_close$Water_Impact[2]+100, y = df_close$Cost[2]+20, label = paste0("'Desalination: ' * " ,desalination_cost, " * ' USD/m'^3"), color = "#0072B2", size = 7*5/14*0.8,parse=T,hjust=0) +
+  # fmt: skip
+  annotate("text", x = df_opt$Water_Impact, y = df_opt$Cost+100, label = "Optimal Cost", size = 7 * 5 / 14 * 0.8,hjust=0.1) +
+  geom_point(data=df_opt,col="black",size=0.6) +
+  labs(
+    x = expression("Total Freshwater Impact 2025-2050 (billion " ~ m^3 * "-eq)"),
+    y = "Total Cost 2025-2050 (billion USD)",
+    col = ""
+  ) +
   # labs(x = expression("Freshwater Impact (" ~ m^3 ~ " per ton Cu)"), y = "Cost (USD per ton Cu)", col = "") +
   # stat_function(fun = function(x) params[2, ]$a + params[2, ]$b * log(x), color = "blue", linewidth = 1) + # check log fit
-  scale_y_continuous(labels = dollar_format(big.mark = " ", prefix = "$")) +
-  scale_x_continuous(labels = scales::label_comma()) +
-  coord_cartesian(xlim = c(1700, 8100)) +
+  scale_y_continuous(
+    labels = dollar_format(big.mark = ",", prefix = "$"),
+    sec.axis = sec_axis(
+      ~ (. - df_opt$Cost) / df_opt$Cost,
+      name = "Change in Cost relative to Optimal Cost NZE (%)",
+      labels = scales::percent
+    )
+  ) +
+  scale_x_continuous(
+    labels = scales::label_comma(),
+    sec.axis = sec_axis(
+      ~ (. - df_opt$Water_Impact) / df_opt$Water_Impact,
+      name = "Change in Freshwater Impact relative to Optimal Cost NZE (%)",
+      labels = scales::percent
+    )
+  ) +
+  coord_cartesian(xlim = c(1300, 8200)) +
   scale_color_manual(values = demand_colors) +
   theme_bw(8) +
-  theme(panel.grid = element_blank(), legend.position = "none")
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "none",
+    axis.title.y.right = element_text(size = 6),
+    axis.text.y.right = element_text(size = 6),
+    axis.title.x.top = element_text(size = 6),
+    axis.text.x.top = element_text(size = 6)
+  )
 
 ggsave("Figures/Fig2_Demand.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 8.7, height = 8.7)
+
 # ggsave("Figures/TradeOff_perTon.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 8.7 * 1.2, height = 8.7)
 
 # sketch ideas
@@ -201,7 +253,7 @@ ggsave("Figures/Fig2_Demand.png", ggplot2::last_plot(), units = 'cm', dpi = 600,
 
 # ggsave("Figures/Cu_TradeOff_Demand.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 8.7 * 2, height = 8.7)
 
-# Add supply production by country for each point of the curve -----------------
+# b - COUNTRY OF PRODUCTION BY WATER IMPACT -----------------
 
 # Store results from optimization run
 (runs <- list.files("Results/Optimization/DemandScenario", recursive = T, full.names = TRUE) |>
@@ -294,7 +346,7 @@ water |>
 
 ##
 
-data_fig <- prod |> filter(Scenario == "SPS") |> filter(metric != "No Water Constraint")
+data_fig <- prod |> filter(Scenario == "NZE") |> filter(metric != "No Water Constraint")
 
 
 # Long format
@@ -302,6 +354,7 @@ data_fig <- data_fig |>
   dplyr::select(Scenario, metric, country, Copper, Nickel, Cobalt, Lithium) |>
   pivot_longer(c(Copper, Nickel, Cobalt, Lithium), names_to = 'Mineral', values_to = 'total_metal') |>
   mutate(Mineral = factor(Mineral, levels = c("Copper", "Nickel", "Cobalt", "Lithium")))
+
 
 # Total production by mineral and metric - COBALT is basically a co-product of Ni and Cu, not an active constraint
 data_fig |>
@@ -317,12 +370,33 @@ data_fig |>
   slice_max(order_by = total_metal, n = 10, with_ties = FALSE) |>
   summarise(Top10_countries = paste(country, collapse = ", "), .groups = "drop")
 
+# Add slack as demand unmet
+demand_long <- demand |>
+  filter(Scenario == "NZE") |>
+  pivot_longer(c(Copper, Nickel, Cobalt, Lithium), names_to = 'Mineral', values_to = 'total_demand') |>
+  group_by(Mineral) |>
+  reframe(total_demand = sum(total_demand) / 1e3) |> # in million tons
+  ungroup()
+
+unmet <- data_fig |>
+  group_by(Scenario, metric, Mineral) |>
+  reframe(total_metal = sum(total_metal)) |>
+  ungroup() |>
+  left_join(demand_long) |>
+  mutate(unmet_demand = total_demand - total_metal) |>
+  dplyr::select(-total_metal, -total_demand) |>
+  filter(unmet_demand > 1e-3) |>
+  rename(total_metal = unmet_demand) |>
+  mutate(country = "Unmet Demand")
+
 
 dict_region <- read_excel("Inputs/Dictionaries/Dict_Countries_SP.xlsx", sheet = "Dict")
 data_fig <- data_fig |>
+  rbind(unmet) |>
   left_join(dict_region) |>
   mutate(
     region = case_when(
+      country == "Unmet Demand" ~ "Unmet Demand",
       Mineral == "Copper" &
         country %in%
           c("Chile", "Peru", "Indonesia", "Russia", "USA", "China", "Mongolia", "Dem. Rep. Congo", "Mexico") ~ ISO3,
@@ -350,6 +424,7 @@ region_colors <- c(
   "IDN" = "#fdb462",
   "RUS" = "#756bb1",
   "USA" = "#c4dfbe",
+  "CAN" = "#e91a1c",
   "CHN" = "#d74c5a",
   "ARG" = "#ff7f00",
   "MNG" = "#e31a1c",
@@ -359,7 +434,9 @@ region_colors <- c(
   "AUS" = "#fb9a99",
   "Europe" = "#2b8cbe",
   "MEX" = "#66c2a5",
-  "RoW" = "#4d4d4d"
+  "KAZ" = "#8c510a",
+  "RoW" = "#4d4d4d",
+  "Unmet Demand" = "#67000D80"
 )
 
 data_fig <- data_fig |> mutate(region = factor(region, levels = rev(names(region_colors))))
@@ -378,8 +455,9 @@ order_col <- data_fig |>
   arrange(desc(share)) |>
   pull(order_col) |>
   unique()
-# put RoW at the end
+# put RoW and demand unment at the end
 order_col <- c(order_col[!str_detect(order_col, "RoW")], order_col[str_detect(order_col, "RoW")])
+order_col <- c(order_col[!str_detect(order_col, "Unmet Demand")], order_col[str_detect(order_col, "Unmet Demand")])
 data_fig <- data_fig |> mutate(order_col = paste0(Mineral, region) |> factor(levels = rev(order_col)))
 
 ggplot(data_fig, aes(Water_Impact, total_metal, fill = region, group = order_col)) +
@@ -392,9 +470,10 @@ ggplot(data_fig, aes(Water_Impact, total_metal, fill = region, group = order_col
   scale_x_continuous(labels = scales::comma) +
   coord_cartesian(expand = F) +
   labs(
-    x = expression("Total Freshwater Impact (billion " ~ m^3 ~ "-eq)"),
+    x = expression("Total Freshwater Impact (billion " ~ m^3 * "-eq)"),
     y = "",
     title = "2025-2050 Metal production, in million tons",
+    subtitle = "Net Zero Emissions Demand Scenario"
   ) +
   theme_pb_wide() +
   theme(legend.position = "none", panel.spacing.x = unit(1.2, "lines"))
@@ -402,7 +481,372 @@ ggplot(data_fig, aes(Water_Impact, total_metal, fill = region, group = order_col
 # fmt: skip
 ggsave("Figures/Fig2_prod.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 8.7, height = 8.7)
 
-# Trade off curves by climate scenarios -----
+
+# BY FISH BIODIVESITY SCENARIO -----
+# Fish biodiversity is a constraint on water available to extract
+
+# Store results from optimization run
+(runs <- list.files("Results/Optimization/BioDScenario/NZE/", pattern = "Metrics.*", recursive = T, full.names = TRUE))
+
+# filter by driver gfdl-esm4
+# runs <- runs[str_detect(runs, "gfdl-esm4")]
+
+obj <- do.call(
+  rbind,
+  lapply(runs, function(folder_path) {
+    transform(
+      read.csv(folder_path),
+      folder_path = folder_path,
+      file_name = basename(folder_path),
+      Scenario = basename(dirname(folder_path))
+    )
+  })
+)
+head(obj)
+unique(obj$file_name)
+unique(obj$Scenario)
+obj <- obj |>
+  mutate(
+    metric = case_when(
+      str_detect(file_name, "NoWater") ~ "No Water Constraint",
+      str_detect(file_name, "Base") ~ "0%",
+      str_detect(file_name, "Eps00") ~ "0.5%",
+      str_detect(file_name, "Eps01") ~ "1%",
+      str_detect(file_name, "Eps02") ~ "2%",
+      str_detect(file_name, "Eps03") ~ "3%",
+      str_detect(file_name, "Eps04") ~ "4%",
+      str_detect(file_name, "Eps05") ~ "5%",
+      str_detect(file_name, "Eps06") ~ "6%",
+      str_detect(file_name, "Eps08") ~ "8%",
+      str_detect(file_name, "Eps10") ~ "10%",
+      str_detect(file_name, "Eps12") ~ "12%",
+      str_detect(file_name, "Eps15") ~ "15%",
+      str_detect(file_name, "Eps20") ~ "20%",
+      str_detect(file_name, "Eps25") ~ "25%",
+    ) |>
+      # fmt: skip
+      factor(levels = c("No Water Constraint", "0%", "0.5%", "1%", "2%", "3%", "4%", "5%", "6%", "8%", "10%", "12%", "15%", "20%", "25%"))
+  ) |>
+  mutate(
+    Scenario = case_when(
+      Scenario == "none" ~ "All Basins",
+      Scenario == "FI99" ~ "Fish Index < 100",
+      Scenario == "FI90" ~ "Fish Index < 90",
+      Scenario == "FI80" ~ "Fish Index < 80",
+      Scenario == "FI70" ~ "Fish Index < 70",
+      Scenario == "FI60" ~ "Fish Index < 60",
+      Scenario == "FI50" ~ "Fish Index < 50",
+      T ~ Scenario
+    ) |>
+      factor(
+        levels = c(
+          "All Basins",
+          "Fish Index < 100",
+          "Fish Index < 90",
+          "Fish Index < 80",
+          "Fish Index < 70",
+          "Fish Index < 60",
+          "Fish Index < 50"
+        )
+      )
+  )
+
+table(obj$Scenario)
+table(obj$metric)
+table(obj$Parameter)
+
+df <- obj |>
+  filter(!is.na(Scenario)) |>
+  pivot_wider(names_from = Parameter, values_from = Value) |>
+  # left_join(dem_tot) |>
+  mutate(
+    Water_cons = Water / 1e3, # in billion m3
+    Cost = Cost / 1e3, # billion USD (discounted)
+    Water_Impact = `Water impact` / 1e3, # billion m3 world equiv.
+    lab_metric = case_when(
+      metric == "0%" ~ "Optimal Cost",
+      metric == "0.5%" ~ paste0("", metric, " Cost Increase"),
+      T ~ metric
+    )
+  ) |>
+  mutate(`Water impact` = NULL)
+head(df)
+range(df$Water_Impact)
+
+
+# Slope as difference between points
+df <- df |>
+  arrange(Scenario, metric) |>
+  mutate(slope = -(Cost - lag(Cost)) / (Water_Impact - lag(Water_Impact))) |>
+  mutate(label_slope = if_else(metric %in% c("0.5%", "4%", "15%"), paste0("", round(slope, 2), " * ' USD/m'^3"), ""))
+
+# Get % of water red between first point
+base_water <- df |> filter(metric == "0%") |> rename(water_base = Water_Impact) |> dplyr::select(Scenario, water_base)
+df <- df |>
+  filter(!str_detect(metric, "Water")) |>
+  left_join(base_water) |>
+  mutate(water_red_pct = (Water_Impact - water_base) / water_base * 100) |>
+  mutate(
+    label_water_red = if_else(metric %in% c("0%", "1%", "3%", "4%", "8%"), "", paste0("", round(water_red_pct), "%"))
+  )
+
+# FIGURE - Pareto curves: non-dominated solutions
+
+data_fig <- df |> filter(!str_detect(metric, "Water"))
+range(data_fig$Water_Impact)
+range(data_fig$Cost)
+
+# Scenarios too similar
+data_fig <- data_fig |> filter(!str_detect(Scenario, "50|90"))
+
+
+desalination_cost <- 0.5 # USD per m3
+# pick closest point to slope
+df_close <- data_fig |> group_by(Scenario) |> slice_min(abs(slope - desalination_cost), n = 1)
+
+df_opt <- data_fig |> filter(metric == "0%") |> filter(Scenario == "All Basins")
+
+
+ggplot(data_fig, aes(Water_Impact, Cost, col = Scenario, group = Scenario)) +
+  geom_line() +
+  geom_point(size=0.5) +
+  # fmt: skip
+  geom_text(data = filter(data_fig, metric == "0%"),aes(label = Scenario),size = 7 * 5 / 14 * 0.8,hjust = 0,nudge_y=100*c(-1,1,1,-1,2.5),nudge_x=1000*c(0,0,0,-1.5,-1.8)) +
+  # fmt: skipx
+  # geom_text(data=filter(data_fig,str_detect(Scenario,"SSP3-7.0")), aes(label=lab_metric),col="#4d4d4d",nudge_y=45*c(-1,1,1,rep(1,9)), size=7*5/14*0.8,hjust=0) +
+  # fmt: skip
+  # geom_text_repel(aes(label=label_water_red),col="darkblue",nudge_y=-45, size=7*5/14*0.8,hjust=0,fontface="italic") +
+  # fmt: skip
+  # geom_text(data=filter(data_fig,str_detect(Scenario,"SSP3-7.0")), aes(label=label_slope),col="#6c8364",nudge_y=45, size=7*5/14*0.8,parse=T,hjust=0) +
+  # fmt: skip
+  geom_segment(data=df_close,aes(x=Water_Impact+1000/desalination_cost/2,xend=df_close$Water_Impact-1000/desalination_cost/2,y=df_close$Cost-1000/2,yend=df_close$Cost+1000/2), linetype="dashed", color="#0072B2",linewidth=0.25) +
+  geom_point(data=df_close,col="#0072B2",size=1) +
+  # fmt: skip
+  annotate("text", x = df_close$Water_Impact[3]+100, y = df_close$Cost[3]+150, label = paste0("'Desalination: ' * " ,desalination_cost, " * ' USD/m'^3"), color = "#0072B2", size = 7*5/14*0.8,parse=T,hjust=0) +
+  labs(x = expression("Total Freshwater Impact (billion " ~ m^3 * "-eq)"), y = "Total Cost (billion USD)", col = "") +
+  # labs(x = expression("Freshwater Impact (" ~ m^3 ~ " per ton Cu)"), y = "Cost (USD per ton Cu)", col = "") +
+  # stat_function(fun = function(x) params[2, ]$a + params[2, ]$b * log(x), color = "blue", linewidth = 1) + # check log fit
+  scale_y_continuous(
+    labels = dollar_format(big.mark = ",", prefix = "$"),
+    sec.axis = sec_axis(
+      ~ (. - df_opt$Cost) / df_opt$Cost,
+      name = "Change in Cost relative to Optimal Cost All Basins (%)",
+      labels = scales::percent
+    )
+  ) +
+  scale_x_continuous(
+    labels = scales::label_comma(),
+    sec.axis = sec_axis(
+      ~ (. - df_opt$Water_Impact) / df_opt$Water_Impact,
+      name = "Change in Freshwater Impact relative to Optimal Cost All Basins (%)",
+      labels = scales::percent
+    )
+  ) +
+  # coord_cartesian(xlim = c(2100, 9500)) +
+  scale_colour_manual(values = rev(c("#EBCF2EFF", "#88AB38FF", "#5E9432FF", "#225F2FFF", "black"))) +
+  theme_pb_wide() +
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "none",
+    axis.title.y.right = element_text(size = 6),
+    axis.text.y.right = element_text(size = 6),
+    axis.title.x.top = element_text(size = 6),
+    axis.text.x.top = element_text(size = 6)
+  )
+
+ggsave("Figures/Fig2_Biodiversity.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 8.7, height = 8.7)
+
+# PRODUCTION FISH INDEX SCENARIO  ---------------------------
+
+# Store results from optimization run
+(runs <- list.files("Results/Optimization/BioDScenario/NZE/", recursive = T, full.names = TRUE) |>
+  (\(x) {
+    x[(!str_detect(x, "SP_") & !str_detect(x, "Metrics") & !str_detect(x, "Slack") & !str_detect(x, "Inputs"))]
+  })())
+
+
+opt_results <- do.call(
+  rbind,
+  lapply(runs, function(folder_path) {
+    transform(read.csv(folder_path), file_name = basename(folder_path), Scenario = basename(dirname(folder_path)))
+  })
+)
+opt_results <- opt_results |> filter(ktons_extracted > 0 | capacity_added > 0 | mine_opened > 0) # reduce size
+head(opt_results)
+unique(opt_results$file_name)
+table(opt_results$Scenario)
+
+opt_results <- opt_results |>
+  mutate(
+    metric = case_when(
+      str_detect(file_name, "NoWater") ~ "No Water Constraint",
+      str_detect(file_name, "Base") ~ "0%",
+      str_detect(file_name, "Eps00") ~ "0.5%",
+      str_detect(file_name, "Eps01") ~ "1%",
+      str_detect(file_name, "Eps02") ~ "2%",
+      str_detect(file_name, "Eps03") ~ "3%",
+      str_detect(file_name, "Eps04") ~ "4%",
+      str_detect(file_name, "Eps05") ~ "5%",
+      str_detect(file_name, "Eps06") ~ "6%",
+      str_detect(file_name, "Eps08") ~ "8%",
+      str_detect(file_name, "Eps10") ~ "10%",
+      str_detect(file_name, "Eps12") ~ "12%",
+      str_detect(file_name, "Eps15") ~ "15%",
+      str_detect(file_name, "Eps20") ~ "20%",
+      str_detect(file_name, "Eps25") ~ "25%",
+    ) |>
+      # fmt: skip
+      factor(levels = rev(c("No Water Constraint","0%","0.5%","1%","2%","3%","4%","5%","6%","8%","10%","12%","15%","20%","25%")))
+  ) |>
+  mutate(
+    Scenario = case_when(
+      Scenario == "none" ~ "All Basins",
+      Scenario == "FI99" ~ "Fish Index < 100",
+      Scenario == "FI90" ~ "Fish Index < 90",
+      Scenario == "FI80" ~ "Fish Index < 80",
+      Scenario == "FI70" ~ "Fish Index < 70",
+      Scenario == "FI60" ~ "Fish Index < 60",
+      Scenario == "FI50" ~ "Fish Index < 50",
+      T ~ Scenario
+    ) |>
+      factor(
+        levels = c(
+          "All Basins",
+          "Fish Index < 100",
+          "Fish Index < 90",
+          "Fish Index < 80",
+          "Fish Index < 70",
+          "Fish Index < 60",
+          "Fish Index < 50"
+        )
+      )
+  )
+
+# DEPOSIT already downloaded above
+
+prod <- opt_results |>
+  left_join(deposit) |>
+  mutate(
+    copper = ktons_extracted / 1000 * grade_resource_Copper * recovery_rate_Copper / 100,
+    nickel = ktons_extracted / 1000 * grade_resource_Nickel * recovery_rate_Nickel / 100,
+    cobalt = ktons_extracted / 1000 * grade_resource_Cobalt * recovery_rate_Cobalt / 100,
+    lithium = ktons_extracted / 1000 * grade_resource_Lithium * recovery_rate_Lithium / 100,
+  ) |>
+  group_by(Scenario, metric, country) |>
+  reframe(Copper = sum(copper), Nickel = sum(nickel), Cobalt = sum(cobalt), Lithium = sum(lithium), ) |>
+  filter(Copper + Nickel + Cobalt + Lithium > 0) |>
+  ungroup()
+
+
+# Filter by Fish Index
+table(prod$Scenario)
+data_fig <- prod |> filter(str_detect(Scenario, "70")) |> filter(metric != "No Water Constraint")
+
+
+# Long format
+data_fig <- data_fig |>
+  dplyr::select(Scenario, metric, country, Copper, Nickel, Cobalt, Lithium) |>
+  pivot_longer(c(Copper, Nickel, Cobalt, Lithium), names_to = 'Mineral', values_to = 'total_metal') |>
+  mutate(Mineral = factor(Mineral, levels = c("Copper", "Nickel", "Cobalt", "Lithium")))
+
+# Add slack as demand unmet
+demand_long <- demand |>
+  filter(Scenario == "NZE") |>
+  pivot_longer(c(Copper, Nickel, Cobalt, Lithium), names_to = 'Mineral', values_to = 'total_demand') |>
+  group_by(Mineral) |>
+  reframe(total_demand = sum(total_demand) / 1e3) |> # in million tons
+  ungroup()
+
+unmet <- data_fig |>
+  group_by(Scenario, metric, Mineral) |>
+  reframe(total_metal = sum(total_metal)) |>
+  ungroup() |>
+  left_join(demand_long) |>
+  mutate(unmet_demand = total_demand - total_metal) |>
+  dplyr::select(-total_metal, -total_demand) |>
+  filter(unmet_demand > 1e-3) |>
+  rename(total_metal = unmet_demand) |>
+  mutate(country = "Unmet Demand")
+
+# Key countries by mineral
+data_fig |>
+  filter(metric == "0%") |>
+  group_by(Mineral) |>
+  slice_max(order_by = total_metal, n = 10, with_ties = FALSE) |>
+  summarise(Top10_countries = paste(country, collapse = ", "), .groups = "drop")
+
+
+# Dict region already loaded
+data_fig <- data_fig |>
+  rbind(unmet) |>
+  left_join(dict_region) |>
+  mutate(
+    region = case_when(
+      country == "Unmet Demand" ~ "Unmet Demand",
+      # fmt: skip
+      Mineral == "Copper" & country %in% c("Chile", "Peru", "Indonesia", "Russia", "USA", "China", "Mongolia", "Dem. Rep. Congo", "Mexico","Kazakhstan") ~ ISO3,
+      Mineral == "Nickel" &
+        country %in%
+          c("Indonesia", "Philippines", "Russia", "Australia", "New Caledonia", "Brazil", "USA", "Canada") ~ ISO3,
+      Mineral == "Cobalt" & country %in% c("Dem. Rep. Congo", "Indonesia", "Australia", "USA", "Philippines") ~ ISO3,
+      Mineral == "Lithium" &
+        country %in%
+          c("Chile", "Dem. Rep. Congo", "Argentina", "USA", "Australia", "Brazil", "Canada", "Mexico") ~ ISO3,
+      T ~ "RoW"
+    ) |>
+      str_replace("COD", "DRC")
+  ) |>
+  group_by(Scenario, metric, region, Mineral) |>
+  reframe(total_metal = sum(total_metal)) |>
+  ungroup() |>
+  group_by(Scenario, metric, Mineral) |>
+  mutate(share = total_metal / sum(total_metal), ) |>
+  ungroup()
+
+data_fig <- data_fig |> mutate(region = factor(region, levels = rev(names(region_colors))))
+
+# add total water impact per scenario
+impact <- df |> group_by(Scenario, metric) |> reframe(Water_Impact = mean(Water_Impact)) |> ungroup()
+
+data_fig <- data_fig |> left_join(impact)
+
+
+data_fig <- data_fig |> mutate(region_label = if_else(share > 0.01, as.character(region), ""))
+
+# order by share region
+order_col <- data_fig |>
+  mutate(order_col = paste0(Mineral, region)) |>
+  arrange(desc(share)) |>
+  pull(order_col) |>
+  unique()
+# put RoW and Unmet Demand at the end
+order_col <- c(order_col[!str_detect(order_col, "RoW")], order_col[str_detect(order_col, "RoW")])
+order_col <- c(order_col[!str_detect(order_col, "Unmet Demand")], order_col[str_detect(order_col, "Unmet Demand")])
+data_fig <- data_fig |> mutate(order_col = paste0(Mineral, region) |> factor(levels = rev(order_col)))
+
+ggplot(data_fig, aes(Water_Impact, total_metal, fill = region, group = order_col)) +
+  geom_area(col="black",linewidth=0.1) +
+  # geom_col(col="black",linewidth=0.1) +
+  geom_text(data=filter(data_fig, metric == "0%"), aes(x=Water_Impact-100,label = region_label),hjust=1,, position = position_stack(vjust = 0.5), size = 7 * 5 / 14 * 0.8, col="white") +
+  facet_wrap(~Mineral, ncol = 2, scales = "free") +
+  scale_fill_manual(values = region_colors) +
+  scale_y_continuous(labels = scales::comma) +
+  scale_x_continuous(labels = scales::comma, breaks = seq(6000, 9000, 1000)) +
+  coord_cartesian(expand = F) +
+  labs(
+    x = expression("Total Freshwater Impact (billion " ~ m^3 * "-eq)"),
+    y = "",
+    title = "2025-2050 Metal production, in million tons",
+    subtitle = "Including only basins with Fish Index < 70"
+  ) +
+  theme_pb_wide() +
+  theme(legend.position = "none", panel.spacing.x = unit(1.2, "lines"))
+
+# fmt: skip
+ggsave("Figures/Fig2_prod_biodiversity.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 8.7, height = 8.7)
+
+
+# BY CLIMATE SCENARIO -----
 
 # Store results from optimization run
 (runs <- list.files(
@@ -555,7 +999,7 @@ ggplot(data_fig, aes(Water_Impact, Cost, col = Scenario, group = group_key)) +
 ggsave("Figures/Fig2_Climate.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 8.7, height = 8.7)
 # ggsave("Figures/TradeOff_perTon.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 8.7 * 1.2, height = 8.7)
 
-# Curve by Mineral ----------------------
+# BY MINERAL ----------------------
 # Need to split costs and water allocation at deposit level, based on revenue share at each deposit
 
 # Get total mineral production - total metal production previously loaded
@@ -739,33 +1183,97 @@ data_fig_d_long <- data_fig_d |>
 names(data_fig_d_long) <- names(data_fig_d_long) |> str_remove("perTon")
 
 
-data_fig_d_long <- data_fig_d_long |> filter(Scenario == "SPS") |> filter(metric != "No Water Constraint")
+data_fig_d_long <- data_fig_d_long |> filter(Scenario == "NZE") |> filter(metric != "No Water Constraint")
 table(data_fig_d_long$metric)
 
+
+# either with log scale or facet...
 ggplot(data_fig_d_long, aes(Water, Cost, col = Mineral)) +
   geom_line() +
   geom_point(size=0.5) +
-  facet_wrap(~Mineral, scales = "free") +
+  # facet_wrap(~Mineral, scales = "free") +
   # fmt: skip
-  # geom_text(data = filter(data_fig_d_long, metric == "0%"),aes(label = Mineral),nudge_y = -50,nudge_x=-200,size = 7 * 5 / 14 * 0.8,hjust = 1) +
-  # fmt: skip
-  geom_text(data=filter(data_fig_d_long,str_detect(Scenario,"SPS")), aes(label=lab_metric),col="#4d4d4d", size=7*5/14*0.8,hjust=0) +
-  # fmt: skip
-  # geom_segment(data=df_close,aes(x=Water_Impact+1000/desalination_cost/2,xend=df_close$Water_Impact-1000/desalination_cost/2,y=df_close$Cost-1000/2,yend=df_close$Cost+1000/2), linetype="dashed", color="#0072B2") +
-  # geom_point(data=df_close,col="#0072B2",size=1) +
-  # fmt: skip
-  # annotate("text", x = df_close$Water_Impact[2]-400, y = df_close$Cost[2]+400, label = paste0("'Desalination ~' * " ,desalination_cost, " * ' USD/m'^3"), color = "#0072B2", size = 7*5/14*0.8,parse=T,hjust=0) +
-  labs(x = expression("Freshwater Impact (" ~ m^3 ~ "-eq per ton)"), y = "Cost (USD per ton)", col = "") +
-  # labs(x = expression("Freshwater Impact (" ~ m^3 ~ " per ton Cu)"), y = "Cost (USD per ton Cu)", col = "") +
-  # stat_function(fun = function(x) params[2, ]$a + params[2, ]$b * log(x), color = "blue", linewidth = 1) + # check log fit
-  scale_y_continuous(labels = dollar_format(big.mark = " ", prefix = "$")) +
+  geom_text(data = filter(data_fig_d_long, metric == "0%"),aes(label = Mineral),nudge_y = -500*c(1,1,1,1),nudge_x=0,size = 7 * 5 / 14 * 0.8,hjust = 0.5) +
+  labs(x = expression("Freshwater Impact (" ~ m^3 * "-eq per ton)"), y = "Cost (USD per ton)", col = "") +
+  scale_y_continuous(
+    labels = dollar_format(big.mark = ",", prefix = "$")
+    # breaks = c(1000, 10000, 100000)
+  ) +
   scale_x_continuous(labels = scales::label_comma()) +
   # coord_cartesian(xlim = c(1700, 8100)) +
-  # scale_color_manual(values = demand_colors) +
-  theme_bw(8) +
-  theme(panel.grid = element_blank(), legend.position = "none")
+  scale_color_manual(values = minerals_colors) +
+  theme_pb_wide() +
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "none",
+    axis.title.y.right = element_text(size = 5),
+    axis.text.y.right = element_text(size = 5),
+    axis.title.x.top = element_text(size = 5),
+    axis.text.x.top = element_text(size = 5),
+    strip.placement = "outside"
+  )
 
 # fmt: skip
-ggsave("Figures/Fig2_Mineral.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 8.7*1.5, height = 8.7)
+ggsave("Figures/Fig2_Mineral.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 8.7, height = 8.7)
+
+# Secondary axis using patchwork
+# secondary axis range
+max_metrics <- data_fig_d_long |>
+  filter(metric == "0%") |>
+  rename(maxCost = Cost, maxWater = Water) |>
+  dplyr::select(Mineral, maxCost, maxWater)
+
+make_plot <- function(mineral_name) {
+  df_m <- data_fig_d_long |> dplyr::filter(Mineral == mineral_name)
+  mm_m <- max_metrics |> dplyr::filter(Mineral == mineral_name)
+
+  ggplot(df_m, aes(Water, Cost, col = Mineral)) +
+    geom_line() +
+    geom_point(size = 0.5) +
+    labs(
+      title = mineral_name,
+      x = expression("Freshwater Impact (" ~ m^3 * "-eq per ton)"),
+      y = "Cost (USD per ton)",
+      col = ""
+    ) +
+    scale_y_continuous(
+      labels = dollar_format(big.mark = ",", prefix = "$"),
+      sec.axis = sec_axis(
+        ~ (. - mm_m$maxCost) / mm_m$maxCost,
+        name = "Change in Cost relative to Optimal Cost (%)",
+        labels = scales::percent
+      )
+    ) +
+    scale_x_continuous(
+      labels = scales::label_comma(),
+      sec.axis = sec_axis(
+        ~ (. - mm_m$maxWater) / mm_m$maxWater,
+        name = "Change in Freshwater Impact relative to Optimal Cost (%)",
+        labels = scales::percent
+      )
+    ) +
+    scale_color_manual(values = minerals_colors) +
+    theme_pb_wide() +
+    theme(
+      plot.title = element_text(hjust = 0.5),
+      panel.grid = element_blank(),
+      legend.position = "none",
+      axis.title.y.right = element_text(size = 5),
+      axis.text.y.right = element_text(size = 5),
+      axis.title.x.top = element_text(size = 5),
+      axis.text.x.top = element_text(size = 5)
+    )
+}
+
+library(patchwork)
+
+minerals <- c("Copper", "Nickel", "Cobalt", "Lithium")
+
+plots <- lapply(minerals, make_plot)
+
+wrap_plots(plots, ncol = 2) + plot_layout(axes = "collect")
+
+# fmt: skip
+ggsave("Figures/Fig2_Mineral_facet.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 8.7*1.5, height = 8.7)
 
 # EoF

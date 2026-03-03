@@ -172,3 +172,58 @@ ggplot(mineral_data_all, aes(water_stress, cumulative_resources, colour = Climat
 
 # fmt: skip
 ggsave("Figures/Deposit/Resource_WaterStress_Climate.png",ggplot2::last_plot(),units = 'cm',dpi = 600,width = 8.7 * 2,height = 8.7 * 2)
+
+# By water scenario PAPER 2022 -------------------------
+
+aware <- read.csv("Parameters/AWARE_Projections_Deposit.csv")
+
+names(aware)
+# to long format by period
+water_long <- aware |>
+  dplyr::select(Name, ID, starts_with("available"), starts_with("demand")) |>
+  pivot_longer(c(-Name, -ID), names_to = 'key', values_to = 'water') |>
+  mutate(period = str_extract(key, "2010|2020|2030|2040|2050")) |>
+  mutate(ClimateScen = str_extract(key, "SSP2RCP6|SSP2RCP2\\.6")) |>
+  mutate(key = key |> str_remove("_2010|_2020|_2030|_2040|_2050") |> str_remove("_SSP2RCP6|_SSP2RCP2\\.6")) |>
+  pivot_wider(names_from = key, values_from = water)
+
+# add resources data
+water_long <- water_long |>
+  left_join(deposits |> dplyr::select(ID, Basin_ID, starts_with("resources_")), by = "ID") |>
+  ungroup()
+names(water_long)
+
+# water_scenarios already has deposits + column `scenario` (filename)
+mineral_data_all <- map_dfr(minerals, function(mineral) {
+  col <- paste0("resources_", mineral)
+  water_long |>
+    mutate(
+      gross_available = available + demand,
+      water_stress = if_else(gross_available <= 0, 1, demand / gross_available),
+      water_stress = if_else(demand < 0, 0, water_stress),
+      water_stress = pmin(water_stress, 1)
+    ) |>
+    filter(!is.na(.data[[col]]), !is.na(water_stress)) |>
+    group_by(ClimateScen, period, Basin_ID) |>
+    summarise(water_stress = first(water_stress), resources = sum(.data[[col]]), .groups = "drop") |>
+    arrange(ClimateScen, period, water_stress) |>
+    group_by(ClimateScen, period) |>
+    mutate(cumulative_resources = cumsum(resources), mineral = mineral) |>
+    ungroup()
+})
+mineral_data_all <- mineral_data_all |> mutate(group_x = paste0(period, ClimateScen))
+
+# Pick last period
+mineral_data_all <- mineral_data_all |> filter(period == "2050")
+
+ggplot(mineral_data_all, aes(water_stress, cumulative_resources, colour = ClimateScen, group = group_x)) +
+  geom_step(linewidth = 0.4) +
+  facet_wrap(~mineral, scales = "free", ncol = 2) +
+  scale_x_continuous(labels = scales::percent, expand = c(0, 0)) +
+  scale_y_continuous(labels = scales::comma, expand = c(0, 0)) +
+  labs(x = "Water Stress", y = "Cumulative Resources (million tonnes)", col = "Climate Scenario") +
+  theme_pb_wide() +
+  theme(legend.position = c(0.8, 0.2), legend.background = element_rect(fill = "white", color = "black"))
+
+# fmt: skip
+ggsave("Figures/Deposit/Resource_WaterStress_Climate_paper2022.png",ggplot2::last_plot(),units = 'cm',dpi = 600,width = 8.7 * 2,height = 8.7 * 2)

@@ -35,8 +35,9 @@ function runOptimization(
     bigM_cost_Cu=14000 * 1.5 / 1e3,
     bigM_cost_Ni=48000 * 1.5 / 1e3,
     bigM_cost_Co=82000 * 1.5 / 1e3,
-    mine_life = 15.0, # in years
-    fraction_notRecovered = 0.2, # cost not recoverd for terminal life
+    mine_life=15.0, # in years
+    fraction_notRecovered=0.2, # cost not recoverd for terminal life
+    fishBiodiversity_limit=100, # 0-100, indicating the threshold to allow water extraction following biodiversity 
 )
     d_size = size(deposit, 1)
     t_size = size(demand, 1)
@@ -106,6 +107,16 @@ function runOptimization(
 
     aware_basins = unique([k[1] for k in keys(aware_available)])
     basins = sort(intersect(collect(keys(deposits_in_basin)), aware_basins))
+    # Fish biodiversity parameters per basin
+
+    fish_index = deposit[!, :fish_index] # 0 to 100
+    # Fish biodiversity per basin = max of deposits in basin (incl. upstream)
+    fish_index_basin = Dict(b => maximum(fish_index[i] for i in deposits_in_basin[b]) for b in basins)
+
+    # Apply limit - how hard do we want to protect fish biodiversity (for scenarios)
+    # Note that knob=100 means no protection, as every basin (100 fish index-max) is allowed
+    # Basins with fish index below limit has water extraction allowed, rest not
+    biod_mult = Dict(b => (fish_index_basin[b] > fishBiodiversity_limit ? 0.0 : 1.0) for b in basins)
 
     # Set big M values
     bigM_extract = maximum(max_prod_rate)
@@ -287,10 +298,11 @@ function runOptimization(
     )
 
     # Water constraint Water available per basin (includes consumption in upstream basins)
+    # Include fish biodiversity constraint
     @constraint(
         model,
         c7[b in basins, t in 1:t_size],
-        sum(x[i, t] * water_cons[i] for i in deposits_in_basin[b]) <= aware_available[b, t]
+        sum(x[i, t] * water_cons[i] for i in deposits_in_basin[b]) <= aware_available[b, t] * biod_mult[b]
     )
 
     # Save results prior to MGA for water
@@ -316,7 +328,7 @@ function runOptimization(
             ("Mine Life (years)", mine_life),
             ("Fraction of cost not recovered at end of mine life", fraction_notRecovered),
             ("Use hyperbolic discount rate", hyperbolic),
-                   ],
+        ],
         [:Parameter, :Value],
     )
     CSV.write(url_file, inputs_text)
@@ -348,7 +360,7 @@ function runOptimization(
         cost_con = @constraint(model, cost_expr <= 1.15 * opt_val)  # create once
 
         # cost degradation
-        for epsilon_cost in [0.25,0.2,0.15, 0.125, 0.1, 0.08, 0.06, 0.05, 0.04, 0.03, 0.02, 0.01, 0.005]
+        for epsilon_cost in [0.25, 0.2, 0.15, 0.125, 0.1, 0.08, 0.06, 0.05, 0.04, 0.03, 0.02, 0.01, 0.005]
             # for epsilon_cost in [0.1, 0.05, 0.03, 0.01]
             # Cost constraint
             set_normalized_rhs(cost_con, (1 + epsilon_cost) * opt_val) # updated
