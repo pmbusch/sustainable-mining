@@ -115,16 +115,18 @@ nrow(result) # 11624
 # ----------------------------
 # Normalize
 # ----------------------------
-quantile(result$fish_index, probs = c(0.25, 0.5, 0.75, 0.9, 0.95, 0.98, 0.99), na.rm = TRUE) # 20 is p99
+quantile(result$fish_index, probs = c(0.25, 0.5, 0.75, 0.9, 0.95, 0.98, 0.99, 0.995, 0.999), na.rm = TRUE) # 20 is p99
 # p98 is 8.5
+#p999 is 160
+
 result |> filter(fish_index < 10) |> ggplot(aes(fish_index)) + stat_ecdf() + theme_pb_wide()
 
-# normalize from 0 to 100, cutoff at 10 (p98) to avoid outliers dominating the index
+# normalize from 0 to 100, cutoff at 150 (p99.9%) to avoid outliers dominating the index
 result <- result |>
   mutate(fish_index = if_else(is.na(fish_index), 0, fish_index)) |> # 0 if not present (NA)
   mutate(fish_index_raw = fish_index) |>
-  mutate(fish_index = if_else(fish_index > 10, 100, fish_index / 10 * 100))
-summary(result$fish_index) # mean 5.27
+  mutate(fish_index = if_else(fish_index > 150, 100, fish_index / 150 * 100))
+summary(result$fish_index) # mean 0.73
 
 
 # ----------------------------

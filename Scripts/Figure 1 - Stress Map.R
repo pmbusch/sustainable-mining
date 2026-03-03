@@ -18,7 +18,8 @@ head(cf_map)
 
 # For Figure SI - Instead of water stress, add fish biodiversity index
 fish <- read.csv("Parameters/FW_FISH/FW_FISH_Basin_FishIndex_Global.csv")
-cf_map <- cf_map |> left_join(fish, by = "Basin_ID") |> mutate(fish_index = if_else(is.na(fish_index), 0, fish_index)) # set NA to 0 as indicates no intersection
+
+cf_map <- cf_map |> left_join(fish, by = "Basin_ID")
 ggplot(cf_map, aes(fish_index)) + stat_ecdf() + xlim(0, 3.5) # vast majority under 3
 
 
@@ -36,9 +37,8 @@ ggplot(deps, aes(x = resources)) + geom_histogram(bins = 500)
 
 # limit stress to 100%
 cf_map <- cf_map |> mutate(stress = pmin(stress, 1)) # cap at 100% to avoid outliers dominating the color scale
-
-# limite fish bio to 300
-cf_map <- cf_map |> mutate(fish_index = pmin(fish_index, 300))
+skimr::skim(cf_map$stress)
+skimr::skim(cf_map$fish_index)
 
 map1 <- map_data('world')
 p1 <- ggplot(deps) +
@@ -51,10 +51,10 @@ p1 <- ggplot(deps) +
   # fmt: skip
   # scale_fill_distiller(
   scale_fill_gradientn(
-    name="Water Stress",na.value = "white", labels = function(x) ifelse(x >= 1, ">100%", scales::percent(x)), trans = "sqrt",
-    # name="Fish Biodiversity Index",na.value = "white", labels = function(x) ifelse(x >= 300, ">300",x),trans="sqrt", # FISH BIO    
-  colours = c("white", "#FEE08B", "#D73027"),values  = rescale(c(0, 0.5, 3.5)), 
-  # colours = c("white", "#EBCF2EFF", "#244422FF"),values  = rescale(c(0, 50, 300)),  # FISH BIO
+    # name="Water Stress",na.value = "white", labels = function(x) ifelse(x >= 1, ">100%", scales::percent(x)), trans = "sqrt",
+    name="Fish Biodiversity Index",na.value = "white", # FISH BIO    
+  # colours = c("white", "#FEE08B", "#D73027"),values  = rescale(c(0, 0.5, 3.5)), 
+  colours = c("white", "#EBCF2EFF", "#244422FF"),values  = rescale(c(0, 10, 100)),  # FISH BIO
  guide = guide_colorbar(direction = "horizontal",
                          barwidth = unit(6, "cm"),
                          barheight = unit(0.25, "cm"),
@@ -188,7 +188,7 @@ ggsave("Figures/Figure1.png", ggplot2::last_plot(),units = 'cm', dpi = 1200, wid
 # ggsave("Figures/Figure1.svg", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
 # ggsave("Figures/Figure1.pdf", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
 
-# ggsave("Figures/Figure1_Fish.png", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
+ggsave("Figures/Figure1_Fish.png", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
 
 ## Version 2 - Facets --------
 

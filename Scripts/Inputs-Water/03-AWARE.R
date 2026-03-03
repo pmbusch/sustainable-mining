@@ -270,6 +270,11 @@ wb_basin <- wb |>
 wb$aware_available <- NULL
 wb <- wb %>% left_join(wb_basin, by = "Basin_ID")
 
+# Add fish biodiversity index
+fish <- read.csv("Parameters/FW_FISH/FW_FISH_Basin_FishIndex_Global.csv")
+wb <- wb |> left_join(fish, by = "Basin_ID")
+
+
 # Save water data
 names(wb)
 write.csv(wb, "Parameters/Deposit.csv", row.names = F)
