@@ -102,53 +102,82 @@ p1 <- ggplot(deps) +
   theme_minimal(8) +
   geom_polygon(data = map1, mapping = aes(x = long, y = lat, group = group), col = 'gray', fill = "white") +
   # Water stress map
-  geom_sf(data = cf_map, aes(fill = stress), color = "grey30", linewidth = 0.1) +
-  # geom_sf(data = cf_map, aes(fill = fish_index), color = "grey30", linewidth = 0.1) + # comment/uncomment for fish biodiversity
-  # fmt: skip
+  # geom_sf(data = cf_map, aes(fill = stress), color = "grey30", linewidth = 0.05) +
+  geom_sf(data = cf_map, aes(fill = fish_index), color = "grey30", linewidth = 0.05) + # comment/uncomment for fish biodiversity
   scale_fill_gradientn(
-    name="Water Stress",na.value = "white", labels = function(x) ifelse(x >= 1, ">100%", scales::percent(x)), trans = "sqrt",
-    colours = c("white", "#FEE08B", "#D73027"),values  = scales::rescale(c(0, 0.5, 3.5)), 
-  #   name="Fish Biodiversity Index",na.value = "white", # FISH BIO    
-  # colours = c("white", "#EBCF2EFF", "#244422FF"),values  = scales::rescale(c(0, 10, 100)),  # FISH BIO
- guide = guide_colorbar(direction = "horizontal",
-                         barwidth = unit(6, "cm"),
-                         barheight = unit(0.25, "cm"),
-                         order = 1)) +
+    name = "Water Stress",
+    labels = function(x) ifelse(x >= 1, ">100%", scales::percent(x)),
+    colours = c("white", "#ffe7a599", "#d8362999"),
+    values = scales::rescale(c(0, 0.5, 3.5)),
+    na.value = "white",
+    trans = "sqrt",
+    # Uncomment for Fish Index figure (SI)
+    # name = "Fish Biodiversity Index", # FISH BIO
+    # colours = c("white", "#EBCF2E99", "#24442299"),
+    # values = scales::rescale(c(0, 10, 100)), # FISH BIO
+    guide = guide_colorbar(
+      direction = "horizontal",
+      barwidth = unit(6, "cm"),
+      barheight = unit(0.25, "cm"),
+      title.position = "top",
+      title.hjust = 0.5, # center title
+      order = 1
+    )
+  ) +
   ggnewscale::new_scale_fill() +
   # Deposits
-  scale_fill_manual(values = minerals_colors, guide = guide_legend(direction = "horizontal", nrow = 1)) +
-  coord_sf(xlim = c(-140, 160), ylim = c(-60, 70)) +
+  scale_fill_manual(values = minerals_colors, guide = "none") +
+  coord_sf(xlim = c(-155, 165), ylim = c(-52, 70)) +
   scale_y_continuous(breaks = NULL, name = "") +
   scale_x_continuous(breaks = NULL, name = "") +
   scale_size_continuous(
     trans = "sqrt",
-    breaks = c(0.1, 1, 10, 25, 50, 100, 150),
+    breaks = c(0.1, 1, 25, 100),
+    labels = c("0.1", "1", "25", "100"),
     range = c(0.3, 3.5), # reduce size of painted points
-    guide = guide_legend(direction = "horizontal", nrow = 1, byrow = TRUE, title.position = "left", order = 2)
+    guide = guide_legend(
+      direction = "horizontal",
+      nrow = 1,
+      byrow = TRUE,
+      title.position = "top",
+      title.hjust = 0.5,
+      order = 2
+    ),
+    name = "Resources (Mt)"
   ) +
-  labs(title = "(a) Deposits (main mineral)", size = "Resources, million tons") +
+  labs(title = "All minerals") +
   theme(
     panel.grid = element_blank(),
-    legend.position = c(0.5, 0.11),
-    legend.background = element_rect(color = "black"),
-    legend.text = element_text(size = 6),
+    legend.position = c(0.55, 0.09),
+    legend.background = element_blank(),
+    legend.text = element_text(size = 8),
     legend.box.spacing = unit(0, "cm"),
     legend.margin = margin(2, 12, 2, 2),
     legend.spacing.y = unit(1.5, "mm"),
-    legend.box = "vertical",
+    legend.box = "horizontal",
     plot.margin = margin(1, 1, 1, 1),
+    plot.title = element_text(size = 10, hjust = 0.5, face = "bold"),
     legend.key.height = unit(0.25, 'cm'),
     legend.key.width = unit(0.25, 'cm'),
+    legend.key = element_blank(),
     panel.border = element_rect(color = "black", fill = NA, linewidth = 0.6)
   )
 p1
 
 # Insets now
-mk_inset <- function(xlim, ylim, tag, data_) {
+mk_inset <- function(xlim, ylim, tag, data_, letter) {
   p1 +
-    geom_point(data=data_,aes(x = LONGITUDE, y = LATITUDE,size=resources,fill=Mineral),alpha = 0.7,  shape  = 21, colour = "black", stroke = 0.25) +
+    geom_point(data=data_,aes(x = LONGITUDE, y = LATITUDE,size=resources,fill=Mineral),alpha = 0.7,  shape  = 21, colour = "black", stroke = 0.15) +
     coord_sf(xlim = xlim, ylim = ylim, expand = FALSE) +
-    theme(legend.position = "none") +
+    theme(
+      legend.position = "none",
+      plot.title = element_text(size = 10, hjust = 0.5, face = "bold", color = minerals_colors[tag]),
+      panel.border = element_rect(color = paste0(minerals_colors[tag], "B3"), fill = NA, linewidth = 1.5),
+      plot.margin = margin(0, 0, 0, 0),
+      panel.spacing = unit(0, "pt")
+    ) +
+    # fmt: skip
+    annotate("text",x = -Inf, y = -Inf,label = letter,hjust = -0.5, vjust = -0.5,fontface = "bold",size = 5,colour = "black") +
     labs(title = tag)
 }
 
@@ -169,13 +198,13 @@ mk_inset <- function(xlim, ylim, tag, data_) {
 # Choose equal area rectangles
 (x <- boxes)
 # fmt: skip
-p_copper <- mk_inset(c(x[1,]$xmin, x[1,]$xmax), c(x[1,]$ymin,x[1,]$ymax), "(b) Copper (incl. co-products)", filter(deps, Mineral == "Copper"))
+p_copper <- mk_inset(c(x[1,]$xmin, x[1,]$xmax), c(x[1,]$ymin,x[1,]$ymax), "Copper", filter(deps, Mineral == "Copper"),"b")
 # fmt: skip
-p_nickel <- mk_inset(c(x[2,]$xmin, x[2,]$xmax), c(x[2,]$ymin,x[2,]$ymax), "(e) Nickel (incl. co-products)", filter(deps, Mineral == "Nickel"))
+p_nickel <- mk_inset(c(x[2,]$xmin, x[2,]$xmax), c(x[2,]$ymin,x[2,]$ymax), "Nickel", filter(deps, Mineral == "Nickel"),"e")
 # fmt: skip
-p_cobalt <- mk_inset(c(x[3,]$xmin, x[3,]$xmax), c(x[3,]$ymin,x[3,]$ymax), "(d) Cobalt (incl. co-products)", filter(deps, Mineral == "Cobalt"))
+p_cobalt <- mk_inset(c(x[3,]$xmin, x[3,]$xmax), c(x[3,]$ymin,x[3,]$ymax), "Cobalt", filter(deps, Mineral == "Cobalt"),"c")
 # fmt: skip
-p_lithium <- mk_inset(c(x[4,]$xmin, x[4,]$xmax), c(x[4,]$ymin,x[4,]$ymax), "(c) Lithium", filter(deps, Mineral == "Lithium"))
+p_lithium <- mk_inset(c(x[4,]$xmin, x[4,]$xmax), c(x[4,]$ymin,x[4,]$ymax), "Lithium", filter(deps, Mineral == "Lithium"),"d")
 
 
 boxes_sf <- boxes |>
@@ -188,11 +217,19 @@ boxes_sf <- boxes |>
   st_as_sf()
 
 p_big <- p1 +
-  geom_point(data=filter(deps,PRIMARY_COMMODITY==Mineral),aes(x = LONGITUDE, y = LATITUDE,size=resources,fill=Mineral),alpha = 0.7,  shape  = 21, colour = "black", stroke = 0.25) +
-  geom_sf(data = boxes_sf, fill = NA, aes(color = Mineral), linewidth = 0.5, linetype = "dashed") +
+  geom_point(data=filter(deps,PRIMARY_COMMODITY==Mineral),aes(x = LONGITUDE, y = LATITUDE,size=resources,fill=Mineral),alpha = 0.7,  shape  = 21, colour = "black", stroke = 0.15) +
+  geom_sf(data = boxes_sf, fill = NA, aes(color = Mineral), linewidth = 0.5, alpha = 0.7) +
+  geom_text(data = filter(boxes_sf,Mineral!="Lithium"),fontface = "bold", size = 10 * 5 / 14 * 0.8,
+            aes(x = xmin, y = ymin, label = Mineral,color=Mineral),
+            hjust = 0, vjust = 1.5) +
+  geom_text(data = filter(boxes_sf,Mineral=="Lithium"),fontface = "bold", size = 10 * 5 / 14 * 0.8,
+            aes(x = xmax, y = ymax, label = Mineral,color=Mineral),
+            hjust = 1, vjust = -0.5) +
+  # fmt: skip
+  annotate("text",x = -Inf, y = -Inf,label = "a",hjust = -0.5, vjust = -0.5,fontface = "bold",size = 5,colour = "black") +
   scale_color_manual(values = minerals_colors, guide = "none") +
-  coord_sf(xlim = c(-140, 160), ylim = c(-60, 70))
-
+  coord_sf(xlim = c(-155, 165), ylim = c(-52, 70))
+p_big
 
 # Total resources and demand
 demand <- read.csv("Parameters/IEA_Demand.csv")
@@ -229,17 +266,17 @@ p_demand <- deps |>
 
 # p_big1 <- p_big + patchwork::inset_element(p_demand, left = 0.01, bottom = 0.01, right = 0.205, top = 0.25)
 
-p_big / wrap_plots(list(p_copper, p_lithium, p_cobalt, p_nickel), nrow = 1) + plot_layout(heights = c(2, 1))
+p_big / wrap_plots(list(p_copper, p_cobalt, p_lithium, p_nickel), nrow = 1) + plot_layout(heights = c(0.61, 0.39))
 
 
 # fmt: skip
 ggsave("Figures/Figure1.png", ggplot2::last_plot(),units = 'cm', dpi = 1200, width = 8.7*3, height = 8.7*2)
 ggsave("Figures/Figure1.svg", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
-# ggsave("Figures/Figure1.pdf", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
+ggsave("Figures/Figure1.pdf", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
 
-ggsave("Figures/Figure1_Fish.png", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
-ggsave("Figures/Figure1_Fish.svg", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
-
+# Uncomment for Fish figure (SI)
+# ggsave("Figures/Figure1_Fish.png", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
+# ggsave("Figures/Figure1_Fish.svg", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
 
 ## Version 2 - Facets --------
 

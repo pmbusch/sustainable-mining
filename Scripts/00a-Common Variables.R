@@ -24,7 +24,8 @@ region_colors <- c(
 )
 
 
-minerals_colors <- c("Lithium" = "#00BFFF", "Copper" = "#2E8B57", "Nickel" = "#4D4D4D", "Cobalt" = "#8A2BE2")
+# minerals_colors <- c("Lithium" = "#00BFFF", "Copper" = "#2E8B57", "Nickel" = "#4D4D4D", "Cobalt" = "#8A2BE2")
+minerals_colors <- c("Lithium" = "#3288bd", "Copper" = "#66c2a5", "Nickel" = "#7c7c7c", "Cobalt" = "#5e4fa2")
 
 
 # Names of scenarios
