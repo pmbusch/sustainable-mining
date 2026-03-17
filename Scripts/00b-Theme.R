@@ -6,12 +6,17 @@
 #   ggplot(...) + ... + theme_pmb("wide")    # for 18 x 8 cm figures
 #
 # Also see recommended geom and ggsave settings below.
-theme_pb <- function(preset = c("small", "wide"), base_family = "", text_col = "#222222", panel_border_col = "black") {
+theme_pb <- function(
+  preset = c("small", "wide", "largeFont"),
+  base_family = "",
+  text_col = "#222222",
+  panel_border_col = "black"
+) {
   preset <- match.arg(preset)
   # base sizes calibrated to figure sizes
   # - small (8 x 8 cm): base_size = 8
   # - wide  (18 x 8 cm): base_size = 10
-  base_size <- switch(preset, small = 7, wide = 8)
+  base_size <- switch(preset, small = 7, wide = 8, largeFont = 10)
 
   # Derived sizes
   sz_plot_title <- base_size + 1.5 # bold main title
@@ -27,8 +32,8 @@ theme_pb <- function(preset = c("small", "wide"), base_family = "", text_col = "
       text = ggplot2::element_text(colour = text_col, family = base_family),
 
       # Titles and tags
-      plot.title = ggplot2::element_text(size = sz_plot_title, face = "bold", colour = text_col),
-      plot.subtitle = ggplot2::element_text(size = base_size, hjust = 0),
+      plot.title = ggplot2::element_text(size = sz_plot_title, face = "bold", colour = text_col, hjust = 0.5),
+      plot.subtitle = ggplot2::element_text(size = base_size, hjust = 0.5),
       plot.caption = ggplot2::element_text(size = base_size - 2, hjust = 1, colour = text_col, lineheight = 0.9),
       plot.tag = ggplot2::element_text(size = sz_plot_tag, face = "bold"),
 
@@ -70,3 +75,4 @@ theme_pb <- function(preset = c("small", "wide"), base_family = "", text_col = "
 # Convenience presets
 theme_pb_small <- function(...) theme_pb(preset = "small", ...)
 theme_pb_wide <- function(...) theme_pb(preset = "wide", ...)
+theme_pb_large <- function(...) theme_pb(preset = "largeFont", ...)

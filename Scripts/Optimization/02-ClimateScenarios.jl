@@ -17,8 +17,9 @@ demandAll = DataFrame(CSV.File("Parameters/IEA_Demand.csv"))
 
 # DEMAND x CLIMATE SCENARIOS
 unique_scenarios = unique(demandAll.Scenario)
+unique_scenarios = ["NZE"]
 
-climate_files = readdir("Parameters/WaterScenarios")
+climate_files = readdir("Parameters/WaterScenarios2")
 climate_files = filter(f -> endswith(f, ".csv"), climate_files)
 
 for scen in unique_scenarios

@@ -21,16 +21,18 @@ demandAll = DataFrame(CSV.File("Parameters/IEA_Demand.csv"))
 demandBase = filter(row -> row.Scenario == "NZE", demandAll)
 # runOptimization(demandBase, depositAll, "TestSP"; multiobjective=false, climate_scenario="Deposit_ssp585_gfdl-esm4.csv")
 # runOptimization(demandBase, depositAll, "TestSP"; multiobjective=false)
-runOptimization(demandBase, depositAll, "TestBio"; fishBiodiversity_limit=90)
+# runOptimization(demandBase, depositAll, "TestBio"; fishBiodiversity_limit=90)
+# runOptimization(demandBase, depositAll, "TestDes"; cost_water_des=0.5)
 
 # DEMAND SCENARIOS
 # Extract unique scenarios
 unique_scenarios = unique(demandAll.Scenario)
+# unique_scenarios = filter(s -> occursin("x", s), unique(demandAll.Scenario)) # Run extra scenarios for contour
 for scen in unique_scenarios
     println(scen)
     # Filter scenario
     demand_scen = filter(row -> row.Scenario == scen, demandAll)
-    # runOptimization(demand_scen, depositAll, "DemandScenario/$scen")
+    runOptimization(demand_scen, depositAll, "DemandScenario/$scen")
 end
 
 # End of File

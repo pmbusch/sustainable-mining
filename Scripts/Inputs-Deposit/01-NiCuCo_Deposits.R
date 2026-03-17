@@ -680,6 +680,7 @@ df_save <- df |>
     grade_resource, # in % 0 to 100
     resources_ore, # tons ore
     ore_processed, # tons ore processed in 2025
+    prod2025, # tons metal produced in 2025
     cap2025, # tons ore per year
     cap2026,
     cap2027,
@@ -702,10 +703,10 @@ df_save <- df |>
 
 # spread  and fill na
 df_save <- df_save |>
-  mutate(across(all_of(c("grade_reserves", "grade_head", "ore_processed")), ~ replace_na(.x, 0))) |>
+  mutate(across(all_of(c("grade_reserves", "grade_head", "ore_processed", "prod2025")), ~ replace_na(.x, 0))) |>
   pivot_wider(
     names_from = Mineral,
-    values_from = c(reserves, grade_reserves, resources, grade_resource, grade_head),
+    values_from = c(reserves, grade_reserves, resources, grade_resource, grade_head, prod2025),
     names_sep = "_",
     values_fill = 0
   )

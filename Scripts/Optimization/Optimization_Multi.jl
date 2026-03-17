@@ -15,14 +15,14 @@ include("ClimateScenarioFunction.jl")  # load climate scenario function
 
 # Optimization Run Function
 # Inputs:
-# - Demand 
+# - Demand, in ktons
 # - Deposits parameters
 # - Save folder 
 # - discount rate (default 7%)
 # - use an hyperbolic discount rate (default is false)
 # - run multiobjective to explore solutions with some cost degradation
 # - climate scenario to use for water constraints (availability) and freshwater impacts (default "none")
-# - cost to not met demand (slack) - historic high price for each mineral by 50% more (only lithium price is orignally in per tons LCE)
+# - cost to not met demand (slack) (million USD/kton) - historic high price for each mineral by 50% more (only lithium price is orignally in per tons LCE)
 function runOptimization(
     demand,
     deposit,
@@ -38,6 +38,7 @@ function runOptimization(
     mine_life=15.0, # in years
     fraction_notRecovered=0.2, # cost not recoverd for terminal life
     fishBiodiversity_limit=100, # 0-100, indicating the threshold to allow water extraction following biodiversity 
+    cost_water_des=1000, # in USD per m3 of water desalinated; default: cost to big
 )
     d_size = size(deposit, 1)
     t_size = size(demand, 1)
@@ -91,11 +92,15 @@ function runOptimization(
     cost_expansion = cost_expansion .* share_NiCoCu
     cost_opening = cost_opening .* share_NiCoCu
 
-    # Water parameters
+    # Water parameters - in million m3 per kton ore processed
     water_cons = deposit[!, :water] ./ 1e3 # water consumption, converted to million m3 per kton ore processed
 
     # Load time-indexed water_footprint[d,t] and aware_available[basin][t] from climate scenario
+    # all in million m3 and kton ore processed units
     water_footprint, aware_available = load_climate_scenario(deposit, climate_scenario, d_size, t_size)
+
+    # AWARE Characterization factors
+    aware_cf = water_footprint ./ reshape(water_cons, :, 1)
 
     # Map of contained deposits (including in upstream basins) for each basin
     bd = CSV.read("Parameters/basin_to_deposits_upstream.csv", DataFrame)
@@ -153,6 +158,10 @@ function runOptimization(
     bigM_cost_Co = bigM_cost_Co .* (1 ./ discounter')
     bigM_cost_Li = bigM_cost_Li .* (1 ./ discounter')
 
+    # Water desalination cost discount and convert to million USD per million m3 (same units as other variables in the function)
+    # Note: USD/m3 = million USD/million m3
+    cost_water_des = cost_water_des .* (1 ./ discounter')
+
     # Create optimization model
     model = Model(Gurobi.Optimizer)
 
@@ -164,6 +173,7 @@ function runOptimization(
     @variable(model, z_ni[1:t_size] >= 0)  # Slack to match balance
     @variable(model, z_co[1:t_size] >= 0)  # Slack to match balance
     @variable(model, z_li[1:t_size] >= 0)  # Slack to match balance
+    @variable(model, w_des[1:d_size, 1:t_size] >= 0) # total water desalinated at each deposit (in million m3)
 
     # Fix deposits already open 
     status = deposit[!, :status]
@@ -188,24 +198,37 @@ function runOptimization(
         end
     end
 
+    # Fix water desal cost to big M if not used (to prevent model from using it when not needed)
+    if cost_water_des[1] >= 1000
+        for d in 1:d_size, t in 1:t_size
+            fix(w_des[d, t], 0.0; force=true) # fix to zero in default case, as cost is too high to be used
+        end
+    end
+
     # Define expression called multiple times in the function (abstraction)
     # Cost expression for objective function
     @expression(
         model,
         cost_expr,
         sum(
-            cost_extraction[d, t] * x[d, t] + cost_expansion[d, t] * y[d, t] + cost_opening[d, t] * w[d, t] for
-            d in 1:d_size, t in 1:t_size
-        ) + sum(
-            bigM_cost_Cu[t] * z_cu[t] +
-            bigM_cost_Ni[t] * z_ni[t] +
-            bigM_cost_Co[t] * z_co[t] +
-            bigM_cost_Li[t] * z_li[t] for t in 1:t_size
-        )
+                cost_extraction[d, t] * x[d, t] + cost_expansion[d, t] * y[d, t] + cost_opening[d, t] * w[d, t] for
+                d in 1:d_size, t in 1:t_size
+            ) +
+            sum(cost_water_des[t] * sum(w_des[d, t] for d in 1:d_size) for t in 1:t_size) +
+            sum(
+                bigM_cost_Cu[t] * z_cu[t] +
+                bigM_cost_Ni[t] * z_ni[t] +
+                bigM_cost_Co[t] * z_co[t] +
+                bigM_cost_Li[t] * z_li[t] for t in 1:t_size
+            )
     )
-    # Water consumption and impact
-    @expression(model, water_expr, sum(water_cons[d] * x[d, t] for d in 1:d_size, t in 1:t_size))
-    @expression(model, water_impact_expr, sum(water_footprint[d, t] * x[d, t] for d in 1:d_size, t in 1:t_size))
+    # Water consumption and impact (minus desalination impact)
+    @expression(model, water_expr, sum(water_cons[d] * x[d, t] - w_des[d, t] for d in 1:d_size, t in 1:t_size))
+    @expression(
+        model,
+        water_impact_expr,
+        sum(water_footprint[d, t] * x[d, t] - aware_cf[d, t] * w_des[d, t] for d in 1:d_size, t in 1:t_size)
+    )
     # Slack cost
     @expression(
         model,
@@ -217,7 +240,7 @@ function runOptimization(
             bigM_cost_Li[t] * z_li[t] for t in 1:t_size
         )
     )
-    # Mines opeded
+    # Mines opened
     @expression(model, mines_opened_expr, sum(w[d, t] for d in 1:d_size, t in 1:t_size)) - mines_alreadyOpen
 
     # Objective function
@@ -228,26 +251,23 @@ function runOptimization(
     @constraint(
         model,
         c1_cu[t in 1:t_size],
-        sum(x[d, t] * grade_cu[d] * recovery_rate_cu[d] for d in 1:d_size) + z_cu[t] >=
-            demand_cu[t] + (t > 1 ? z_cu[t - 1] : 0)
+        sum(x[d, t] * grade_cu[d] * recovery_rate_cu[d] for d in 1:d_size) + z_cu[t] >= demand_cu[t]
+        # unmet demand for next period at to right side: + (t > 1 ? z_cu[t - 1] : 0)
     )
     @constraint(
         model,
         c1_ni[t in 1:t_size],
-        sum(x[d, t] * grade_ni[d] * recovery_rate_ni[d] for d in 1:d_size) + z_ni[t] >=
-            demand_ni[t] + (t > 1 ? z_ni[t - 1] : 0)
+        sum(x[d, t] * grade_ni[d] * recovery_rate_ni[d] for d in 1:d_size) + z_ni[t] >= demand_ni[t]
     )
     @constraint(
         model,
         c1_co[t in 1:t_size],
-        sum(x[d, t] * grade_co[d] * recovery_rate_co[d] for d in 1:d_size) + z_co[t] >=
-            demand_co[t] + (t > 1 ? z_co[t - 1] : 0)
+        sum(x[d, t] * grade_co[d] * recovery_rate_co[d] for d in 1:d_size) + z_co[t] >= demand_co[t]
     )
     @constraint(
         model,
         c1_li[t in 1:t_size],
-        sum(x[d, t] * grade_li[d] * recovery_rate_li[d] for d in 1:d_size) + z_li[t] >=
-            demand_li[t] + (t > 1 ? z_li[t - 1] : 0)
+        sum(x[d, t] * grade_li[d] * recovery_rate_li[d] for d in 1:d_size) + z_li[t] >= demand_li[t]
     )
     # Extraction less than available production capacity
     @constraint(model, c2[d in 1:d_size, t in 1:t_size], x[d, t] <= sum(y[d, t1] for t1 in 1:t) + cap2025[d])
@@ -297,12 +317,13 @@ function runOptimization(
         model; sr_saveFolder=saveFolder, sr_Optname="NoWaterConstraint", sr_ids=deposit_id, sr_names=deposit_name
     )
 
-    # Water constraint Water available per basin (includes consumption in upstream basins)
+    # Water constraint Water available per basin (includes consumption in upstream basins) + Water desalination in the basin
     # Include fish biodiversity constraint
     @constraint(
         model,
         c7[b in basins, t in 1:t_size],
-        sum(x[i, t] * water_cons[i] for i in deposits_in_basin[b]) <= aware_available[b, t] * biod_mult[b]
+        sum(x[i, t] * water_cons[i] - w_des[i, t] for i in deposits_in_basin[b]) <=
+            aware_available[b, t] * biod_mult[b]
     )
 
     # Save results prior to MGA for water
@@ -328,6 +349,9 @@ function runOptimization(
             ("Mine Life (years)", mine_life),
             ("Fraction of cost not recovered at end of mine life", fraction_notRecovered),
             ("Use hyperbolic discount rate", hyperbolic),
+            ("Water desalination cost (USD per m3)", cost_water_des[1]),
+            ("Fish biodiversity limit (0-100, higher means less protection)", fishBiodiversity_limit),
+            ("Climate scenario", climate_scenario),
         ],
         [:Parameter, :Value],
     )
