@@ -15,13 +15,34 @@ depositAll = DataFrame(CSV.File("Parameters/Deposit.csv"))
 demandAll = DataFrame(CSV.File("Parameters/IEA_Demand.csv"))
 
 # Demand scenarios
-unique_scenarios = unique(demandAll.Scenario)
+# unique_scenarios = unique(demandAll.Scenario)
+unique_scenarios = ["NZE"]
 
 # Biodiversity scenarios
 # FI: Fish index threshold
 biod_limits = Dict(
     "none" => 100.0, "FI99" => 99.9, "FI90" => 90.0, "FI80" => 80.0, "FI70" => 70.0, "FI60" => 60.0, "FI50" => 50.0
 )
+
+biod_limits = Dict(
+    "none" => 100.0,
+    "FI99" => 99.9,
+    "FI95" => 95.0,
+    "FI90" => 90.0,
+    "FI85" => 85.0,
+    "FI80" => 80.0,
+    "FI75" => 75.0,
+    "FI74" => 74.0,
+    "FI73" => 73.0,
+    "FI72" => 72.0,
+    "FI71" => 71.0,
+    "FI70" => 70.0,
+    "FI65" => 65.0,
+    "FI60" => 60.0,
+    "FI55" => 55.0,
+    "FI50" => 50.0,
+)
+
 # Run combinations
 for scen in unique_scenarios
     demand_scen = filter(row -> row.Scenario == scen, demandAll)

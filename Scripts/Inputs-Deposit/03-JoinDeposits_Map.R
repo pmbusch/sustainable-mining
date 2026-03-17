@@ -13,10 +13,10 @@ names(df)
 names(li)
 
 # add mineral to join
-df$reserves_Lithium <- df$grade_reserves_Lithium <- df$grade_resource_Lithium <- df$grade_head_Lithium <- df$resources_Lithium <- df$recovery_rate_Lithium <- 0
-li$reserves_Copper <- li$grade_reserves_Copper <- li$grade_resource_Copper <- li$grade_head_Copper <- li$resources_Copper <- li$recovery_rate_Copper <- 0
-li$reserves_Nickel <- li$grade_reserves_Nickel <- li$grade_resource_Nickel <- li$grade_head_Nickel <- li$resources_Nickel <- li$recovery_rate_Nickel <- 0
-li$reserves_Cobalt <- li$grade_reserves_Cobalt <- li$grade_resource_Cobalt <- li$grade_head_Cobalt <- li$resources_Cobalt <- li$recovery_rate_Cobalt <- 0
+df$reserves_Lithium <- df$grade_reserves_Lithium <- df$grade_resource_Lithium <- df$grade_head_Lithium <- df$resources_Lithium <- df$recovery_rate_Lithium <- df$prod2025_Lithium <- 0
+li$reserves_Copper <- li$grade_reserves_Copper <- li$grade_resource_Copper <- li$grade_head_Copper <- li$resources_Copper <- li$recovery_rate_Copper <- li$prod2025_Copper <- 0
+li$reserves_Nickel <- li$grade_reserves_Nickel <- li$grade_resource_Nickel <- li$grade_head_Nickel <- li$resources_Nickel <- li$recovery_rate_Nickel <- li$prod2025_Nickel <- 0
+li$reserves_Cobalt <- li$grade_reserves_Cobalt <- li$grade_resource_Cobalt <- li$grade_head_Cobalt <- li$resources_Cobalt <- li$recovery_rate_Cobalt <- li$prod2025_Cobalt <- 0
 
 df <- rbind(df, li)
 

@@ -20,7 +20,7 @@ function load_climate_scenario(deposit, climate_scenario, d_size, t_size)
     end
 
     # Read climate scenario CSV
-    scenario_df = CSV.read(joinpath("Parameters", "WaterScenarios", climate_scenario), DataFrame)
+    scenario_df = CSV.read(joinpath("Parameters", "WaterScenarios2", climate_scenario), DataFrame)
 
     # Build matrices [d, t]
     water_footprint_dt = zeros(d_size, t_size)

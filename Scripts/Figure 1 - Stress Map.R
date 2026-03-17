@@ -3,6 +3,7 @@
 
 source("Scripts/00-Libraries.R", encoding = "UTF-8")
 library(patchwork)
+library(scales)
 source("Scripts/00a-Common Variables.R", encoding = "UTF-8")
 
 # LOAD -----------
@@ -33,6 +34,61 @@ table(deps$Mineral)
 range(deps$resources)
 ggplot(deps, aes(x = resources)) + geom_histogram(bins = 500)
 
+# Correlation ore grade and water scarcity ---------
+deposits <- read.csv("Parameters/Deposit.csv")
+deposits <- left_join(deposits, dplyr::select(aware_basin, Basin_ID, stress), by = "Basin_ID")
+names(deposits)
+
+deps_corr <- dplyr::select(
+  deposits,
+  aware_cf,
+  stress,
+  aware_available,
+  resources_Copper,
+  resources_Nickel,
+  resources_Cobalt,
+  resources_Lithium,
+  grade_resource_Copper,
+  grade_resource_Nickel,
+  grade_resource_Cobalt,
+  grade_resource_Lithium
+)
+
+cor(deps_corr, use = "complete.obs")
+# GGally::ggpairs(deps_corr)
+
+### Find boxes with highest amount of resources -------------
+library(terra)
+# raster grid (1°)
+r <- rast(xmin = -180, xmax = 180, ymin = -90, ymax = 90, resolution = 1)
+# 39x39 to plot a 40x40
+w <- matrix(1, 39, 39)
+boxes <- deps |>
+  group_split(Mineral) |>
+  lapply(function(d) {
+    v <- vect(d, geom = c("LONGITUDE", "LATITUDE"), crs = "EPSG:4326")
+
+    r_res <- rasterize(v, r, field = "resources", fun = "sum", background = 0)
+
+    r_sum <- focal(r_res, w = w, fun = sum, na.policy = "omit", fillvalue = 0)
+
+    m <- which.max(values(r_sum))
+    xy <- xyFromCell(r_sum, m)
+
+    tibble(
+      Mineral = unique(d$Mineral),
+      lon_center = xy[1],
+      lat_center = xy[2],
+      xmin = xy[1] - 20,
+      xmax = xy[1] + 20,
+      ymin = xy[2] - 20,
+      ymax = xy[2] + 20
+    )
+  }) |>
+  bind_rows()
+boxes
+
+
 # FIGURE ------------
 
 # limit stress to 100%
@@ -46,15 +102,14 @@ p1 <- ggplot(deps) +
   theme_minimal(8) +
   geom_polygon(data = map1, mapping = aes(x = long, y = lat, group = group), col = 'gray', fill = "white") +
   # Water stress map
-  # geom_sf(data = cf_map, aes(fill = stress), color = "grey30", linewidth = 0.1) +
-  geom_sf(data = cf_map, aes(fill = fish_index), color = "grey30", linewidth = 0.1) + # comment/uncomment for fish biodiversity
+  geom_sf(data = cf_map, aes(fill = stress), color = "grey30", linewidth = 0.1) +
+  # geom_sf(data = cf_map, aes(fill = fish_index), color = "grey30", linewidth = 0.1) + # comment/uncomment for fish biodiversity
   # fmt: skip
-  # scale_fill_distiller(
   scale_fill_gradientn(
-    # name="Water Stress",na.value = "white", labels = function(x) ifelse(x >= 1, ">100%", scales::percent(x)), trans = "sqrt",
-    name="Fish Biodiversity Index",na.value = "white", # FISH BIO    
-  # colours = c("white", "#FEE08B", "#D73027"),values  = rescale(c(0, 0.5, 3.5)), 
-  colours = c("white", "#EBCF2EFF", "#244422FF"),values  = rescale(c(0, 10, 100)),  # FISH BIO
+    name="Water Stress",na.value = "white", labels = function(x) ifelse(x >= 1, ">100%", scales::percent(x)), trans = "sqrt",
+    colours = c("white", "#FEE08B", "#D73027"),values  = scales::rescale(c(0, 0.5, 3.5)), 
+  #   name="Fish Biodiversity Index",na.value = "white", # FISH BIO    
+  # colours = c("white", "#EBCF2EFF", "#244422FF"),values  = scales::rescale(c(0, 10, 100)),  # FISH BIO
  guide = guide_colorbar(direction = "horizontal",
                          barwidth = unit(6, "cm"),
                          barheight = unit(0.25, "cm"),
@@ -111,28 +166,22 @@ mk_inset <- function(xlim, ylim, tag, data_) {
 #     patchwork::inset_element(leg_size, left = 0.72, bottom = 0.12, right = 0.98, top = 0.48)
 # }
 
-# fmt: skip
-# p_copper1 <- mk_inset(c(-130, -100), c(25, 55), "(b) Copper (incl. co-products)", filter(deps, Mineral == "Copper"))
-# p_copper2 <- mk_inset(c(-85, -65), c(-35, 5), "", filter(deps, Mineral == "Copper"))
-# p_lithium <- mk_inset(c(-75, -65), c(-30, -13), "(c) Lithium", filter(deps, Mineral == "Lithium"))
-# p_cobalt <- mk_inset(c(20, 32), c(-15, -5), "(d) Cobalt (incl. co-products)", filter(deps, Mineral == "Cobalt"))
-# p_nickel <- mk_inset(c(110, 155), c(-44, 20), "(e) Nickel (incl. co-products)", filter(deps, Mineral == "Nickel"))
-
 # Choose equal area rectangles
-p_copper <- mk_inset(c(-82, -42), c(-35, 5), "(b) Copper (incl. co-products)", filter(deps, Mineral == "Copper"))
-p_lithium <- mk_inset(c(-75, -35), c(-40, 0), "(c) Lithium", filter(deps, Mineral == "Lithium"))
-p_cobalt <- mk_inset(c(10, 50), c(-35, 5), "(d) Cobalt (incl. co-products)", filter(deps, Mineral == "Cobalt"))
-p_nickel <- mk_inset(c(113, 153), c(-35, 5), "(e) Nickel (incl. co-products)", filter(deps, Mineral == "Nickel"))
+(x <- boxes)
+# fmt: skip
+p_copper <- mk_inset(c(x[1,]$xmin, x[1,]$xmax), c(x[1,]$ymin,x[1,]$ymax), "(b) Copper (incl. co-products)", filter(deps, Mineral == "Copper"))
+# fmt: skip
+p_nickel <- mk_inset(c(x[2,]$xmin, x[2,]$xmax), c(x[2,]$ymin,x[2,]$ymax), "(e) Nickel (incl. co-products)", filter(deps, Mineral == "Nickel"))
+# fmt: skip
+p_cobalt <- mk_inset(c(x[3,]$xmin, x[3,]$xmax), c(x[3,]$ymin,x[3,]$ymax), "(d) Cobalt (incl. co-products)", filter(deps, Mineral == "Cobalt"))
+# fmt: skip
+p_lithium <- mk_inset(c(x[4,]$xmin, x[4,]$xmax), c(x[4,]$ymin,x[4,]$ymax), "(c) Lithium", filter(deps, Mineral == "Lithium"))
 
 
-boxes_sf <- tibble(
-  tag = c("b", "c", "d", "e"),
-  Mineral = c("Copper", "Lithium", "Cobalt", "Nickel"),
-  xmin = c(-82, -75, 10, 113),
-  xmax = c(-42, -35, 50, 153),
-  ymin = c(-35, -40, -35, -35),
-  ymax = c(5, 0, 5, 5)
-) %>%
+boxes_sf <- boxes |>
+  dplyr::select(-lon_center, -lat_center) |>
+  dplyr::slice(c(1, 4, 3, 2)) |> # re order
+  mutate(tag = c("b", "c", "d", "e")) |>
   rowwise() %>%
   mutate(geometry = st_as_sfc(st_bbox(c(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), crs = st_crs(cf_map)))) %>%
   ungroup() %>%
@@ -185,10 +234,12 @@ p_big / wrap_plots(list(p_copper, p_lithium, p_cobalt, p_nickel), nrow = 1) + pl
 
 # fmt: skip
 ggsave("Figures/Figure1.png", ggplot2::last_plot(),units = 'cm', dpi = 1200, width = 8.7*3, height = 8.7*2)
-# ggsave("Figures/Figure1.svg", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
+ggsave("Figures/Figure1.svg", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
 # ggsave("Figures/Figure1.pdf", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
 
 ggsave("Figures/Figure1_Fish.png", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
+ggsave("Figures/Figure1_Fish.svg", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
+
 
 ## Version 2 - Facets --------
 
