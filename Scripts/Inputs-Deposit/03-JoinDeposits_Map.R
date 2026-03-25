@@ -4,9 +4,7 @@
 
 source('Scripts/00-Libraries.R', encoding = 'UTF-8')
 
-
 # LOAD AND MERGE -----------
-
 df <- read.csv("Parameters/Intermediate/CuNiCo_Deposit_SP.csv")
 li <- read.csv("Parameters/Intermediate/Li_Deposit_SP.csv")
 names(df)
@@ -18,6 +16,12 @@ li$reserves_Copper <- li$grade_reserves_Copper <- li$grade_resource_Copper <- li
 li$reserves_Nickel <- li$grade_reserves_Nickel <- li$grade_resource_Nickel <- li$grade_head_Nickel <- li$resources_Nickel <- li$recovery_rate_Nickel <- li$prod2025_Nickel <- 0
 li$reserves_Cobalt <- li$grade_reserves_Cobalt <- li$grade_resource_Cobalt <- li$grade_head_Cobalt <- li$resources_Cobalt <- li$recovery_rate_Cobalt <- li$prod2025_Cobalt <- 0
 
+# CI names
+df$OPEX_ore_median <- NULL
+df$recovery_rate_Lithium_low <- df$recovery_rate_Lithium_high <- 0
+li$recovery_rate_Copper_low <- li$recovery_rate_Copper_high <- li$recovery_rate_Nickel_low <- li$recovery_rate_Nickel_high <- li$recovery_rate_Cobalt_low <- li$recovery_rate_Cobalt_high <- 0
+
+# Merge
 df <- rbind(df, li)
 
 # Numerical stability issues - Force deposits with small resources to be zero

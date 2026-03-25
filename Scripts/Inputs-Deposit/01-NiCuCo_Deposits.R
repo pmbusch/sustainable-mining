@@ -108,6 +108,38 @@ df |>
   reframe(RECOV_RATE = mean(RECOV_RATE, na.rm = T), RECOV_RATE_BY_PERIOD = mean(RECOV_RATE_BY_PERIOD, na.rm = T))
 # 70% to 80%
 
+# weighted by production 2025
+df |>
+  mutate(RECOV_RATE = as.numeric(RECOV_RATE), RECOV_RATE_BY_PERIOD = as.numeric(RECOV_RATE_BY_PERIOD)) |>
+  # mutate(prod2025 = reserves) |>
+  filter(!is.na(prod2025)) |>
+  group_by(Mineral) |>
+  reframe(
+    w.RECOV_RATE = weighted.mean(RECOV_RATE, w = prod2025, na.rm = T),
+    w.RECOV_RATE_BY_PERIOD = weighted.mean(RECOV_RATE_BY_PERIOD, w = prod2025, na.rm = T)
+  )
+# Cu 81-88%, Ni 74-80%, Co 69-71%
+
+# Quantiles of recovery grade (weigthed)
+library(Hmisc)
+df |>
+  mutate(RECOV_RATE = as.numeric(RECOV_RATE), RECOV_RATE_BY_PERIOD = as.numeric(RECOV_RATE_BY_PERIOD)) |>
+  group_by(Mineral) |>
+  reframe(
+    q5_RECOV_RATE = wtd.quantile(RECOV_RATE, prod2025, 0.05, na.rm = T),
+    q10_RECOV_RATE = wtd.quantile(RECOV_RATE, prod2025, 0.10, na.rm = T),
+    q90_RECOV_RATE = wtd.quantile(RECOV_RATE, prod2025, 0.90, na.rm = T),
+    q95_RECOV_RATE = wtd.quantile(RECOV_RATE, prod2025, 0.95, na.rm = T),
+    q5_RECOV_RATE_BY_PERIOD = wtd.quantile(RECOV_RATE_BY_PERIOD, prod2025, 0.05, na.rm = T),
+    q10_RECOV_RATE_BY_PERIOD = wtd.quantile(RECOV_RATE_BY_PERIOD, prod2025, 0.10, na.rm = T),
+    q90_RECOV_RATE_BY_PERIOD = wtd.quantile(RECOV_RATE_BY_PERIOD, prod2025, 0.90, na.rm = T),
+    q95_RECOV_RATE_BY_PERIOD = wtd.quantile(RECOV_RATE_BY_PERIOD, prod2025, 0.95, na.rm = T)
+  )
+# Using recov by period p5-95
+# Cu 55-95%, Ni 26-90%, Co 45-85%
+# Using recov
+# Cu 80-95%, Ni 65-95%, Co 65-85%
+
 ## Mine Type classification --------
 
 # majority is open pit and underground
@@ -213,7 +245,6 @@ df |>
 sum(!is.na(df$OPEX_ore)) # 394 with OPEX data
 
 df |> filter(!is.na(OPEX_ore)) |> select(OPEX_ore) |> distinct() |> nrow() # 341 unique OPEX values
-
 
 ## Variable classification -------------
 
@@ -339,16 +370,26 @@ rf <- ranger(
   num.trees = 300,
   min.node.size = 10,
   respect.unordered.factors = "order",
+  quantreg = T,
   seed = 28012026
 )
 
+pred_q <- predict(
+  rf,
+  data = df |> dplyr::select(country_agg, primary_min_agg),
+  type = "quantiles",
+  quantiles = c(0.1, 0.5, 0.9)
+)$predictions
 
 # Data filling strategy,
 df <- df |>
   mutate(OPEX_orig = OPEX_ore) |>
   mutate(OPEX_source = case_when(!is.na(OPEX_ore) ~ "S&P", T ~ "Fitted Model")) |>
   mutate(
-    OPEX_ore = if_else(is.na(OPEX_ore), predict(rf, data = pick(country_agg, primary_min_agg))$predictions, OPEX_ore)
+    OPEX_ore = if_else(is.na(OPEX_ore), predict(rf, data = pick(country_agg, primary_min_agg))$predictions, OPEX_ore),
+    OPEX_ore_median = if_else(OPEX_source == "Fitted Model", pred_q[, 2], OPEX_ore),
+    OPEX_ore_low = if_else(OPEX_source == "Fitted Model", pred_q[, 1], OPEX_ore * 0.9),
+    OPEX_ore_high = if_else(OPEX_source == "Fitted Model", pred_q[, 3], OPEX_ore * 1.1)
   )
 
 sum(is.na(df$OPEX_ore))
@@ -361,7 +402,7 @@ ggplot(df, aes(OPEX_ore)) +
   theme_pb_wide() +
   geom_vline(xintercept = 0, col = "red")
 
-
+# just to sort plot
 data_fig <- df |> group_by(country_agg) |> mutate(OPEX_avg = mean(OPEX_ore)) |> ungroup()
 
 ggplot(data_fig, aes(x = reorder(country_agg, OPEX_avg), y = OPEX_ore)) +
@@ -382,6 +423,32 @@ ggplot(data_fig, aes(x = reorder(country_agg, OPEX_avg), y = OPEX_ore)) +
 
 # fmt: skip
 ggsave("Figures/Deposit/Ore_Opex.png", ggplot2::last_plot(),units = 'cm', dpi = 600, width = 8.7*2, height = 8.7*2)
+
+# CI Figure
+data_fig <- df |> group_by(country_agg) |> mutate(OPEX_avg = mean(OPEX_ore)) |> ungroup()
+
+data_long <- df |>
+  mutate(id = row_number()) |>
+  select(id, country_agg, OPEX_ore, OPEX_ore_low, OPEX_ore_high) |>
+  pivot_longer(cols = c(OPEX_ore_low, OPEX_ore, OPEX_ore_high), names_to = "scenario", values_to = "OPEX_value") |>
+  mutate(scenario = recode(scenario, "OPEX_ore_low" = "Low (P5)", "OPEX_ore" = "Mean", "OPEX_ore_high" = "High (P95)"))
+
+ggplot(data_long, aes(x = reorder(country_agg, OPEX_value), y = OPEX_value)) +
+  geom_boxplot(aes(fill = scenario), alpha = 0.8, outlier.shape = NA) +
+  geom_point(data=filter(data_long,scenario=="Mean"),position = position_nudge(x = 0.2),aes(col=scenario), alpha=0.6) +
+  geom_point(data=filter(data_long,scenario=="Low (P5)"),position = position_nudge(x = 0),aes(col=scenario), alpha=0.6) +
+  geom_point(data=filter(data_long,scenario=="High (P95)"),position = position_nudge(x = -0.2),aes(col=scenario), alpha=0.6) +
+  coord_flip(expand = FALSE) +
+  scale_y_continuous(labels = scales::dollar_format(big.mark = " ", prefix = "$"), limits = c(0, 503)) +
+  scale_fill_manual(values = c("Low (P5)" = "#33a02c", "Mean" = "#1f78b4", "High (P95)" = "#e31a1c")) +
+  scale_color_manual(values = c("Low (P5)" = "#33a02c", "Mean" = "#1f78b4", "High (P95)" = "#e31a1c"), guide = "none") +
+  guides(fill = guide_legend(reverse = TRUE)) +
+  labs(y = "OPEX\n(USD per ton ore processed)", x = "", fill = "Scenario") +
+  theme_pb_wide() +
+  theme(legend.position = c(0.8, 0.2), axis.text.x = element_text(hjust = 1))
+
+# fmt: skip
+ggsave("Figures/Deposit/Ore_Opex_CI.png", ggplot2::last_plot(),units = 'cm', dpi = 600, width = 8.7*2, height = 8.7*2)
 
 
 # CAPEX model ------
@@ -465,14 +532,26 @@ summary(mod_capex) # R2 =0.27
 # plot(mod_capex)
 
 # Fill capex for all projects
+# get coefficients + intervals
+ci <- confint(mod_capex, level = 0.80) # ~P10–P90
 coefs_CAPEX <- broom::tidy(mod_capex) |>
-  dplyr::select(term, estimate) |>
-  mutate(continent_groups = str_remove(term, "ore_processed:continent_groups")) |>
-  rename(capex_est = estimate, term = NULL)
+  mutate(
+    conf_low = ci[, 1],
+    conf_high = ci[, 2],
+    continent_groups = str_remove(term, "ore_processed:continent_groups"),
+    capex_est = estimate,
+    capex_p10 = conf_low,
+    capex_p90 = conf_high
+  ) |>
+  dplyr::select(continent_groups, capex_est, capex_p10, capex_p90)
 head(coefs_CAPEX)
-(base_capex <- coefs_CAPEX[1, 2]$capex_est / 1e3) # million USD, intial investment
+(base_capex_est <- coefs_CAPEX$capex_est[1] / 1e3) # million USD, intial investment
+base_capex_p10 <- coefs_CAPEX$capex_p10[1] / 1e3
+base_capex_p90 <- coefs_CAPEX$capex_p90[1] / 1e3
+
 coefs_CAPEX[2, 2] * 1e3 # USD per tpa ore added, according to industry a reasonable range is $30-$70 per tpa
 coefs_CAPEX[3, 2] * 1e3
+
 
 table(df$status)
 df <- df |>
@@ -486,9 +565,17 @@ df <- df |>
   left_join(coefs_CAPEX) |>
   mutate(
     # sunk cost considered
-    CAPEX_opening = if_else(status %in% c("Production", "Development"), 0, base_capex), # opening cost, in million USD
+    CAPEX_opening = if_else(status %in% c("Production", "Development"), 0, base_capex_est), # opening cost, in million USD
+    CAPEX_opening_low = if_else(status %in% c("Production", "Development"), 0, base_capex_p10),
+    CAPEX_opening_high = if_else(status %in% c("Production", "Development"), 0, base_capex_p90),
     CAPEX_exp = capex_est * 1e3, # expansion cost, in USD per tpa (ton per year)
+    CAPEX_exp_low = capex_p10 * 1e3,
+    CAPEX_exp_high = capex_p90 * 1e3
   )
+
+sum(is.na(df$CAPEX_opening)) # 0
+sum(is.na(df$CAPEX_exp)) # 0
+sum(is.na(df$CAPEX_opening_low)) # 0
 
 
 # Cost Allocation Coproduction ------------------
@@ -690,10 +777,17 @@ df_save <- df |>
     cap2031,
     cap2032,
     grade_head,
-    OPEX_ore, # USD per ton ore processed
     OPEX_source,
+    OPEX_ore, # USD per ton ore processed
+    OPEX_ore_low,
+    OPEX_ore_high,
+    OPEX_ore_median,
     CAPEX_opening, # million USD
+    CAPEX_opening_low,
+    CAPEX_opening_high,
     CAPEX_exp, # USD per tpa ore added
+    CAPEX_exp_low,
+    CAPEX_exp_high,
     share_NiCoCu, # 0 to 1, cost allocation based on revenues of coproducts
     delay_years,
     Mineral,
@@ -737,7 +831,14 @@ df_save <- df_save |>
 # Add assumptions on recovery rate and max depletion rate
 df_save <- df_save |>
   mutate(recovery_rate_Copper = 0.8, recovery_rate_Nickel = 0.7, recovery_rate_Cobalt = 0.7) |>
-  mutate(max_depletion_rate = 0.04)
+  mutate(max_depletion_rate = 0.04) |>
+  # based on observed spread of currently producing deposits
+  mutate(recovery_rate_Copper_low = 0.6, recovery_rate_Copper_high = 0.95) |>
+  mutate(recovery_rate_Nickel_low = 0.5, recovery_rate_Nickel_high = 0.9) |>
+  mutate(recovery_rate_Cobalt_low = 0.55, recovery_rate_Cobalt_high = 0.85) |>
+  # scenarios
+  mutate(max_depletion_rate_low = 0.02, max_depletion_rate_high = 0.05)
+
 
 # SAVE ---------
 df_save <- df_save |> arrange(ID)
