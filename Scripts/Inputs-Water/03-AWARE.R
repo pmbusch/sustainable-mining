@@ -170,11 +170,10 @@ li_water <- li_water |>
 li_water <- rbind(li_water, tibble(ID = 52581, ore_cons_li = filter(li_water, ID == "37384")$ore_cons_li))
 
 
-# 2. Based on ore grade
-ore_water <- 0.8156 # From collected data on copper deposits, the water consumption is 0.8156 m3 per ton of ore processed
-brine_water <- 0.604 + 1 # evaporation, m3 per m3 of brine, +1 is to include brine water as consumption
-brineDLE_water <- 0.94 + 1 # DLE, m3 per m3 of brine, +1 is to include brine water as consumption
-oreLi_water <- 1.99 # m3 per ton ore hard rock (for clay as well)
+# 2. Based on ore grade - see scripts 01a and 01b for details on fitted models
+# all in m3 per ton of ore or per m3 of brine, +1 to include brine water as consumption
+ore_water_intensity <- read.csv("Parameters/Cu_Water_consumption_intensity.csv")
+lithium_water_intensity <- read.csv("Parameters/Li_Water_consumption_intensity.csv")
 
 table(deposit$mine_type)
 deposit <- deposit %>%
@@ -183,19 +182,40 @@ deposit <- deposit %>%
   # in m3 per ton ore
   mutate(
     water = case_when(
-      !is.na(ore_cons) ~ ore_cons,
-      !is.na(ore_cons_li) ~ ore_cons_li,
+      !is.na(ore_cons) ~ ore_cons, # Based on deposit name
+      !is.na(ore_cons_li) ~ ore_cons_li, # Based on deposit name
       # by lithium type
-      mine_type == "Brine" ~ brine_water,
-      mine_type == "Brine DLE" ~ brineDLE_water,
-      mine_type == "Hard Rock" ~ oreLi_water,
-      TRUE ~ ore_water # rest for copper, nickel and cobalt
+      mine_type == "Brine" ~ lithium_water_intensity[1, 2] + 1,
+      mine_type == "Brine DLE" ~ lithium_water_intensity[2, 2] + 1,
+      mine_type %in% c("Hard Rock", "Clay") ~ lithium_water_intensity[3, 2],
+      TRUE ~ ore_water_intensity[1, 1] # rest for copper, nickel and cobalt
     ),
     water_fill = if_else(!is.na(ore_cons) | !is.na(ore_cons_li), "Literature", "Fitted Model")
+  ) |>
+  # Low and High for sensitivity
+  mutate(
+    water_low = case_when(
+      water_fill == "Literature" & water ~ water * 0.75,
+      mine_type == "Brine" ~ lithium_water_intensity[1, 3] + 1,
+      mine_type == "Brine DLE" ~ lithium_water_intensity[2, 3] + 1,
+      mine_type %in% c("Hard Rock", "Clay") ~ lithium_water_intensity[3, 3],
+      TRUE ~ ore_water_intensity[1, 2]
+    )
+  ) |>
+  mutate(
+    water_high = case_when(
+      water_fill == "Literature" & water ~ water * 1.1,
+      mine_type == "Brine" ~ lithium_water_intensity[1, 4] + 1,
+      mine_type == "Brine DLE" ~ lithium_water_intensity[2, 4] + 1,
+      mine_type %in% c("Hard Rock", "Clay") ~ lithium_water_intensity[3, 4],
+      TRUE ~ ore_water_intensity[1, 3]
+    )
   )
 table(deposit$water_fill) # 77 literature
 sum(is.na(deposit$water)) # no missing
 range(deposit$water)
+range(deposit$water_low)
+range(deposit$water_high)
 
 deposit$ore_cons <- deposit$ore_cons_li <- NULL
 

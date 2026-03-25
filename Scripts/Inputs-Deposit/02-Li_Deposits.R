@@ -189,7 +189,35 @@ df |>
   mutate(RECOV_RATE = as.numeric(RECOV_RATE), RECOV_RATE_BY_PERIOD = as.numeric(RECOV_RATE_BY_PERIOD)) |>
   group_by(mine_type) |>
   reframe(RECOV_RATE = mean(RECOV_RATE, na.rm = T), RECOV_RATE_BY_PERIOD = mean(RECOV_RATE_BY_PERIOD, na.rm = T))
-# 70% to 80%
+# 70% HR to 80% Brine
+
+# weighted by prod 2025
+df |>
+  mutate(RECOV_RATE = as.numeric(RECOV_RATE), RECOV_RATE_BY_PERIOD = as.numeric(RECOV_RATE_BY_PERIOD)) |>
+  group_by(mine_type) |>
+  reframe(
+    RECOV_RATE = weighted.mean(RECOV_RATE, na.rm = T),
+    RECOV_RATE_BY_PERIOD = weighted.mean(RECOV_RATE_BY_PERIOD, na.rm = T)
+  )
+
+# Quantiles of recovery grade (weigthed)
+library(Hmisc)
+df |>
+  mutate(RECOV_RATE = as.numeric(RECOV_RATE), RECOV_RATE_BY_PERIOD = as.numeric(RECOV_RATE_BY_PERIOD)) |>
+  group_by(mine_type) |>
+  reframe(
+    n = n(),
+    q5_RECOV_RATE = wtd.quantile(RECOV_RATE, reserves, 0.05, na.rm = T),
+    q10_RECOV_RATE = wtd.quantile(RECOV_RATE, reserves, 0.10, na.rm = T),
+    q90_RECOV_RATE = wtd.quantile(RECOV_RATE, reserves, 0.90, na.rm = T),
+    q95_RECOV_RATE = wtd.quantile(RECOV_RATE, reserves, 0.95, na.rm = T),
+    q5_RECOV_RATE_BY_PERIOD = wtd.quantile(RECOV_RATE_BY_PERIOD, reserves, 0.05, na.rm = T),
+    q10_RECOV_RATE_BY_PERIOD = wtd.quantile(RECOV_RATE_BY_PERIOD, reserves, 0.10, na.rm = T),
+    q90_RECOV_RATE_BY_PERIOD = wtd.quantile(RECOV_RATE_BY_PERIOD, reserves, 0.90, na.rm = T),
+    q95_RECOV_RATE_BY_PERIOD = wtd.quantile(RECOV_RATE_BY_PERIOD, reserves, 0.95, na.rm = T)
+  )
+# Using recov  p5-95
+# Li Hrd rock:60-90, Li 60-90%
 
 # OPEX model ---------
 # Fill linear regression model to predict missing OPEX data
@@ -254,19 +282,33 @@ mod <- lm(OPEX_ore ~ model_class, data = df)
 nobs(mod) # 36
 summary(mod) # R2=0.83
 
+# Predict quantiles: P50, P95, P99
+pred <- predict(mod, newdata = df |> dplyr::select(model_class), interval = "prediction", level = 0.99)
+# P99 from 99% PI
+p99 <- pred[, "upr"]
+# Get P95 and P50 separately
+pred95 <- predict(mod, newdata = df |> dplyr::select(model_class), interval = "prediction", level = 0.95)
+p95 <- pred95[, "upr"]
+p50 <- pred95[, "fit"] # mean ≈ P50
+
+df |> dplyr::select(Name, country, mine_type, model_class, OPEX_source, OPEX_ore, OPEX_ore_low, OPEX_ore_high) |> view()
 
 # Fit model to rest of deposits
 df <- df |>
   mutate(OPEX_orig = OPEX_ore) |>
   mutate(OPEX_source = case_when(!is.na(OPEX_ore) ~ "S&P", T ~ "Fitted Model")) |>
   mutate(
+    # use 95% upper bound to be conservative of not opened mines yet
     OPEX_ore = if_else(
       is.na(OPEX_ore),
-      # use 95% upper bound to be conservative of not opened mines yet
-      predict(mod, newdata = pick(model_class), interval = "confidence", level = 0.95)[, "upr"],
+      # predict(mod, newdata = pick(model_class), interval = "confidence", level = 0.95)[, "upr"],
+      p95,
       OPEX_ore
-    )
+    ),
+    OPEX_ore_low = if_else(is.na(OPEX_source == "Fitted Model"), p50, OPEX_ore * 0.9),
+    OPEX_ore_high = if_else(is.na(OPEX_source == "Fitted Model"), p99, OPEX_ore * 1.1)
   )
+
 
 data_fig <- df |> group_by(model_class) |> mutate(OPEX_avg = mean(OPEX_ore)) |> ungroup()
 
@@ -286,9 +328,52 @@ ggplot(data_fig, aes(x = reorder(model_class, OPEX_avg), y = OPEX_ore)) +
   guides(fill = guide_legend(reverse = TRUE)) +
   theme(legend.position = c(0.8, 0.2), axis.text.x = element_text(hjust = 1))
 
-
 # fmt: skip
 ggsave("Figures/Deposit/Lithium/Li_Opex.png", ggplot2::last_plot(),units = 'cm', dpi = 600, width = 8.7*2, height = 8.7*2)
+
+
+# CI Figure
+data_fig <- df |> group_by(model_class) |> mutate(OPEX_avg = mean(OPEX_ore)) |> ungroup()
+
+# reshape
+data_long <- data_fig |>
+  mutate(id = row_number()) |>
+  select(id, model_class, mine_type, OPEX_avg, OPEX_ore, OPEX_ore_low, OPEX_ore_high) |>
+  pivot_longer(cols = c(OPEX_ore_low, OPEX_ore, OPEX_ore_high), names_to = "scenario", values_to = "OPEX_value") |>
+  mutate(
+    scenario = recode(
+      scenario,
+      "OPEX_ore_low" = "Low (P50)",
+      "OPEX_ore" = "Baseline (P95)",
+      "OPEX_ore_high" = "High (P99)"
+    ) |>
+      factor(levels = rev(c("Baseline (P95)", "Low (P50)", "High (P99)")))
+  )
+
+# plot
+ggplot(data_long, aes(x = reorder(model_class, OPEX_avg), y = OPEX_value)) +
+  geom_boxplot(aes(fill = scenario), alpha = 0.8, outlier.shape = NA) +
+  # fmt: skip
+  geom_point(data = filter(data_long, scenario == "Baseline (P95)"),
+    position = position_nudge(x = 0.2),aes(col = mine_type),alpha = 0.6) +
+  # fmt: skip
+  geom_point(data = filter(data_long, scenario == "Low (P50)"),
+    position = position_nudge(x = 0),aes(col = mine_type),alpha = 0.6) +
+  # fmt: skip
+  geom_point(data = filter(data_long, scenario == "High (P99)"),
+    position = position_nudge(x = -0.2),aes(col = mine_type),alpha = 0.6) +
+  coord_flip(expand = FALSE, ylim = c(0, 275)) +
+  scale_y_continuous(labels = scales::dollar_format(big.mark = " ", prefix = "$")) +
+  scale_fill_manual(values = c("Low (P50)" = "#33a02c", "Baseline (P95)" = "#1f78b4", "High (P99)" = "#e31a1c")) +
+  scale_colour_viridis_d(option = "D", end = 0.9) +
+  labs(y = "OPEX\n(USD per ton ore processed or m3 brine processed)", x = "", fill = "Scenario", col = "Mine type") +
+  guides(fill = guide_legend(reverse = TRUE)) +
+  theme_pb_wide() +
+  theme(legend.position = c(0.8, 0.2), axis.text.x = element_text(hjust = 1))
+
+# fmt: skip
+ggsave("Figures/Deposit/Lithium/Li_Opex_CI.png", ggplot2::last_plot(),units = 'cm', dpi = 600, width = 8.7*2, height = 8.7*2)
+
 
 # CAPEX model ------
 
@@ -344,23 +429,74 @@ nobs(mod_capex_hr) # 35
 summary(mod_capex_hr) # R2=0.04 # POOR FIT...
 # plot(mod_capex)
 
+ci_hr <- confint(mod_capex_hr, level = 0.80)
+coefs_CAPEX_hr <- broom::tidy(mod_capex_hr) |>
+  mutate(
+    conf_low = ci_hr[, 1],
+    conf_high = ci_hr[, 2],
+    capex_est = estimate,
+    capex_p10 = estimate * 0.7, # avoid negative
+    capex_p90 = estimate * 1.3
+  ) |>
+  dplyr::select(term, capex_est, capex_p10, capex_p90)
+
 mod_capex_br <- lm(capCost ~ brine_processed, data = filter(capex, mine_type == "Brine"))
 nobs(mod_capex_br) # 8
 summary(mod_capex_br) # R2=0.07 # POOR FIT...
+ci_br <- confint(mod_capex_br, level = 0.80)
+coefs_CAPEX_br <- broom::tidy(mod_capex_br) |>
+  mutate(
+    conf_low = ci_br[, 1],
+    conf_high = ci_br[, 2],
+    capex_est = estimate,
+    capex_p10 = estimate * 0.7,
+    capex_p90 = estimate * 1.3
+  ) |>
+  dplyr::select(term, capex_est, capex_p10, capex_p90)
 
+# Hard rock
+base_capex_hr_est <- coefs_CAPEX_hr$capex_est[1] / 1e3
+base_capex_hr_p10 <- coefs_CAPEX_hr$capex_p10[1] / 1e3
+base_capex_hr_p90 <- coefs_CAPEX_hr$capex_p90[1] / 1e3
+
+slope_hr_est <- coefs_CAPEX_hr$capex_est[2] * 1e3
+slope_hr_p10 <- coefs_CAPEX_hr$capex_p10[2] * 1e3
+slope_hr_p90 <- coefs_CAPEX_hr$capex_p90[2] * 1e3
+
+# Brine
+base_capex_br_est <- coefs_CAPEX_br$capex_est[1] / 1e3
+base_capex_br_p10 <- coefs_CAPEX_br$capex_p10[1] / 1e3
+base_capex_br_p90 <- coefs_CAPEX_br$capex_p90[1] / 1e3
+
+slope_br_est <- coefs_CAPEX_br$capex_est[2] * 1e3
+slope_br_p10 <- coefs_CAPEX_br$capex_p10[2] * 1e3
+slope_br_p90 <- coefs_CAPEX_br$capex_p90[2] * 1e3
 
 # Fill capex for all projects
 table(df$status)
 df <- df |>
+  # sunk cost considered
   mutate(
-    # sunk cost considered
+    # opening cost, in million USD
     CAPEX_opening = case_when(
       status %in% c("Production", "Development") ~ 0,
-      str_detect(mine_type, "Brine") ~ unname(coef(mod_capex_br)[1]) / 1e3,
-      T ~ unname(coef(mod_capex_hr)[1]) / 1e3
-    ), # opening cost, in million USD
-    CAPEX_exp = if_else(str_detect(mine_type, "Brine"), unname(coef(mod_capex_br)[2]), unname(coef(mod_capex_hr)[2])) *
-      1e3, # expansion cost, in USD per tpa (ton per year)
+      str_detect(mine_type, "Brine") ~ base_capex_br_est,
+      TRUE ~ base_capex_hr_est
+    ),
+    CAPEX_opening_low = case_when(
+      status %in% c("Production", "Development") ~ 0,
+      str_detect(mine_type, "Brine") ~ base_capex_br_p10,
+      TRUE ~ base_capex_hr_p10
+    ),
+    CAPEX_opening_high = case_when(
+      status %in% c("Production", "Development") ~ 0,
+      str_detect(mine_type, "Brine") ~ base_capex_br_p90,
+      TRUE ~ base_capex_hr_p90
+    ),
+    # expansion cost, in USD per tpa (ton per year)
+    CAPEX_exp = case_when(str_detect(mine_type, "Brine") ~ slope_br_est, TRUE ~ slope_hr_est),
+    CAPEX_exp_low = case_when(str_detect(mine_type, "Brine") ~ slope_br_p10, TRUE ~ slope_hr_p10),
+    CAPEX_exp_high = case_when(str_detect(mine_type, "Brine") ~ slope_br_p90, TRUE ~ slope_hr_p90)
   )
 
 
@@ -417,9 +553,15 @@ df_save <- df |>
     cap2025, # tons ore per year
     grade_head,
     OPEX_ore, # USD per ton ore processed
+    OPEX_ore_low,
+    OPEX_ore_high,
     OPEX_source,
     CAPEX_opening, # million USD
+    CAPEX_opening_low,
+    CAPEX_opening_high,
     CAPEX_exp, # USD per tpa ore added
+    CAPEX_exp_low,
+    CAPEX_exp_high,
     delay_years,
     PRIMARY_COMMODITY
   ) |>
@@ -504,7 +646,13 @@ df_save <- df_save |> filter(resources_Lithium > 0)
 # Add assumptions on recovery rate and max depletion rate
 df_save <- df_save |>
   mutate(recovery_rate_Lithium = if_else(str_detect(mine_type, "Brine"), 0.8, 0.7)) |>
-  mutate(max_depletion_rate = if_else(mine_type == "Brine", 0.02, 0.04))
+  mutate(max_depletion_rate = if_else(mine_type == "Brine", 0.02, 0.04)) |>
+  # based on observed spread of currently producing deposits
+  mutate(recovery_rate_Lithium_low = 0.6, recovery_rate_Lithium_high = 0.9) |>
+  mutate(
+    max_depletion_rate_low = if_else(mine_type == "Brine", 0.01, 0.02),
+    max_depletion_rate_high = if_else(mine_type == "Brine", 0.03, 0.05)
+  )
 
 # Save
 df_save <- df_save |> arrange(ID)

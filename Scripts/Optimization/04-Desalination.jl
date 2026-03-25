@@ -19,19 +19,19 @@ demandAll = DataFrame(CSV.File("Parameters/IEA_Demand.csv"))
 unique_scenarios = ["NZE"]
 
 # Desalination cost scenarios
-des_costs = Dict(
-    "DC025" => 0.25,
-    "DC05" => 0.5,
-    "DC1" => 1.0,
-    "DC15" => 1.5,
-    "DC2" => 2.0,
-    "DC25" => 2.5,
-    "DC5" => 5.0,
-    "DC10" => 10.0,
-)
+des_costs = [
+    ("DC025", 0.25),
+    ("DC05", 0.5),
+    ("DC1", 1.0),
+    ("DC15", 1.5),
+    ("DC2", 2.0),
+    ("DC25", 2.5),
+    ("DC5", 5.0),
+    ("DC10", 10.0),
+]
 
 # Biodiversity scenarios
-biod_limits = Dict("FI100" => 100.0, "FI90" => 90.0, "FI80" => 80.0, "FI70" => 70.0)
+biod_limits = [("FI100", 100.0), ("FI90", 90.0), ("FI80", 80.0), ("FI70", 70.0)]
 
 # Run combinations
 for scen in unique_scenarios

@@ -30,6 +30,7 @@ function runOptimization(
     discount_rate=0.07,
     hyperbolic=false,
     multiobjective=true,
+    shadowPrice=false, # do not return SP by default
     climate_scenario="none",
     bigM_cost_Li=68000 * 1.5 * 5.323 / 1e3,
     bigM_cost_Cu=14000 * 1.5 / 1e3,
@@ -39,6 +40,7 @@ function runOptimization(
     fraction_notRecovered=0.2, # cost not recoverd for terminal life
     fishBiodiversity_limit=100, # 0-100, indicating the threshold to allow water extraction following biodiversity 
     cost_water_des=1000, # in USD per m3 of water desalinated; default: cost to big
+    fast_solve=false, # Few epsilons and store only final model results (metrics)
 )
     d_size = size(deposit, 1)
     t_size = size(demand, 1)
@@ -314,7 +316,12 @@ function runOptimization(
 
     # Save results
     save_results_from_model!(
-        model; sr_saveFolder=saveFolder, sr_Optname="NoWaterConstraint", sr_ids=deposit_id, sr_names=deposit_name
+        model;
+        sr_saveFolder=saveFolder,
+        sr_Optname="NoWaterConstraint",
+        sr_ids=deposit_id,
+        sr_names=deposit_name,
+        fast_solve=fast_solve,
     )
 
     # Water constraint Water available per basin (includes consumption in upstream basins) + Water desalination in the basin
@@ -358,12 +365,18 @@ function runOptimization(
     CSV.write(url_file, inputs_text)
 
     save_results_from_model!(
-        model; sr_saveFolder=saveFolder, sr_Optname="Base", sr_ids=deposit_id, sr_names=deposit_name
+        model;
+        sr_saveFolder=saveFolder,
+        sr_Optname="Base",
+        sr_ids=deposit_id,
+        sr_names=deposit_name,
+        fast_solve=fast_solve,
     )
 
     # Get shadow prices (dual variables)
-    save_shadow_prices_from_model!(model; sr_saveFolder=saveFolder, sr_Optname="", sr_basins=basins)
-
+    if shadowPrice
+        save_shadow_prices_from_model!(model; sr_saveFolder=saveFolder, sr_Optname="", sr_basins=basins)
+    end
     # Run multiobjective to minimize water impact
     if (multiobjective)
         # MGA water 
@@ -384,8 +397,13 @@ function runOptimization(
         cost_con = @constraint(model, cost_expr <= 1.15 * opt_val)  # create once
 
         # cost degradation
-        for epsilon_cost in [0.25, 0.2, 0.15, 0.125, 0.1, 0.08, 0.06, 0.05, 0.04, 0.03, 0.02, 0.01, 0.005]
-            # for epsilon_cost in [0.1, 0.05, 0.03, 0.01]
+        for epsilon_cost in (
+            if fast_solve
+                [0.25, 0.10, 0.05, 0.01]
+            else
+                [0.25, 0.2, 0.15, 0.125, 0.1, 0.08, 0.06, 0.05, 0.04, 0.03, 0.02, 0.01, 0.005]
+            end
+        )
             # Cost constraint
             set_normalized_rhs(cost_con, (1 + epsilon_cost) * opt_val) # updated
             optimize!(model)
@@ -396,15 +414,18 @@ function runOptimization(
                 sr_Optname="Water_Eps$(lpad(string(round(Int, 100 * epsilon_cost)), 2, '0'))",
                 sr_ids=deposit_id,
                 sr_names=deposit_name,
+                fast_solve=fast_solve,
             )
 
             # Get shadow prices (dual variables)
-            save_shadow_prices_from_model!(
-                model;
-                sr_saveFolder=saveFolder,
-                sr_Optname="Water_Eps$(lpad(string(round(Int, 100 * epsilon_cost)), 2, '0'))",
-                sr_basins=basins,
-            )
+            if shadowPrice
+                save_shadow_prices_from_model!(
+                    model;
+                    sr_saveFolder=saveFolder,
+                    sr_Optname="Water_Eps$(lpad(string(round(Int, 100 * epsilon_cost)), 2, '0'))",
+                    sr_basins=basins,
+                )
+            end
         end
     end
 end

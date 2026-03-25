@@ -1,11 +1,13 @@
 # Battery minerals demand from IEA 2025 Critical Minerals Explorer
 # https://www.iea.org/data-and-statistics/data-product/critical-minerals-dataset
-# Data is for 2024 to 2050 in 5-year intervals
+# Data is for 2024 to 2050 in 5-year intervals - interpolation is needed
 
 source('Scripts/00-Libraries.R', encoding = 'UTF-8')
 
-# Load IEA Demand Data -------------
+# ---------------------
+# LOAD IEA Demand Data -------------
 # all in ktons, by scenario
+# ---------------------
 
 # Scenarios definition
 # SPS: Stated Policies Scenario
@@ -54,8 +56,13 @@ df <- df |>
   tidyr::separate(key, into = c("Scenario", "Year"), sep = "_", remove = FALSE) |>
   mutate(Year = as.numeric(Year), key = NULL)
 
+df_orig <- df
 
-# Linear interpolation between years
+
+# ---------------------
+# INTERPOLATION (LINEAR) between years -------------
+# ---------------------
+
 library(zoo)
 df <- df |>
   group_by(Sector, Mineral, Scenario) %>%
@@ -67,49 +74,73 @@ df <- df |>
 # Filter 2025 to 2050 and total demand
 df_all <- df |> filter(Year >= 2025)
 unique(df$Sector)
+df_ev <- df |>
+  filter(Sector == "Electric vehicles" & Year >= 2025) |>
+  rename(ktons_ev = ktons) |>
+  dplyr::select(-Sector)
 df <- df |>
-  filter(Year >= 2025, !(Sector %in% c("Total demand", "Total clean technologies"))) |>
+  filter(Year >= 2025, !(Sector %in% c("Total demand", "Total clean technologies"))) |> # remove totals
   group_by(Scenario, Mineral, Year) |>
-  summarise(ktons = sum(ktons), .groups = "drop")
+  summarise(ktons = sum(ktons), .groups = "drop") |>
+  left_join(df_ev) # add EV demand as separate column for later use in chemistry share estimation
 
 
 nrow(df) # 312 = 26 years * 4 minerals * 3 scenarios
 
 # Additional scenarios for contour plot ------------------
 
-# weights for interpolation between SPS and APS, and between APS and NZE
-w <- c(0.25, 0.5, 0.75)
+# levels
+df |> group_by(Scenario) |> summarise(ktons = sum(ktons) / 1e3, .groups = "drop") |> arrange(ktons)
+# Pick even interpolation lenghts for total mineral - 25 mtons per step
 
-interp_pair <- function(df, s_low, s_high, prefix) {
+targets_sps_aps <- c(975, 1000, 1025)
+targets_aps_nze <- c(1050, 1075, 1100, 1125)
+# weights for interpolation between SPS and APS, and between APS and NZE
+w_sps_aps <- (targets_sps_aps - 971) / (1040 - 971)
+w_aps_nze <- (targets_aps_nze - 1040) / (1127 - 1040)
+
+interp_pair <- function(df, w, s_low, s_high, prefix) {
   low <- df |> filter(Scenario == s_low)
   high <- df |> filter(Scenario == s_high)
 
   bind_rows(lapply(seq_along(w), function(i) {
     low |>
       left_join(high, by = c("Mineral", "Year"), suffix = c("_low", "_high")) |>
-      mutate(Scenario = paste0(prefix, "_", i), ktons = (1 - w[i]) * ktons_low + w[i] * ktons_high) |>
-      select(Mineral, Scenario, Year, ktons)
+      mutate(
+        Scenario = paste0(prefix, "_", i),
+        ktons = (1 - w[i]) * ktons_low + w[i] * ktons_high,
+        ktons_ev = (1 - w[i]) * ktons_ev_low + w[i] * ktons_ev_high,
+      ) |>
+      select(Mineral, Scenario, Year, ktons, ktons_ev)
   }))
 }
 
-interp_sps_aps <- interp_pair(df, "SPS", "APS", "SPS_APS")
-interp_aps_nze <- interp_pair(df, "APS", "NZE", "APS_NZE")
+interp_sps_aps <- interp_pair(df, w_sps_aps, "SPS", "APS", "SPS_APS")
+interp_aps_nze <- interp_pair(df, w_aps_nze, "APS", "NZE", "APS_NZE")
 
 df_interp <- bind_rows(df, interp_sps_aps, interp_aps_nze)
+# levels
+# df_interp |> group_by(Scenario) |> summarise(ktons = sum(ktons) / 1e3, .groups = "drop") |> arrange(ktons)
 
-# Extrapolation - For contour plots
-m_sps <- seq(0.75, 0.95, 0.05)
-m_nze <- seq(1.05, 1.25, 0.05)
+# Extrapolation - For contour plots - Even step lenght of 25mtons
+targets_ext <- seq(725, 1400, 25)
+m_sps <- targets_ext[targets_ext < 971] / 971
+m_nze <- targets_ext[targets_ext > 1127] / 1127
 
 extra_sps <- bind_rows(lapply(m_sps, function(m) {
-  df |> filter(Scenario == "SPS") |> mutate(Scenario = paste0("SPS_x", m), ktons = ktons * m)
+  df |>
+    filter(Scenario == "SPS") |>
+    mutate(Scenario = paste0("SPS_x", round(m, 2)), ktons = ktons * m, ktons_ev = ktons_ev * m)
 }))
 
 extra_nze <- bind_rows(lapply(m_nze, function(m) {
-  df |> filter(Scenario == "NZE") |> mutate(Scenario = paste0("NZE_x", m), ktons = ktons * m)
+  df |>
+    filter(Scenario == "NZE") |>
+    mutate(Scenario = paste0("NZE_x", round(m, 2)), ktons = ktons * m, ktons_ev = ktons_ev * m)
 }))
 
 df_interp <- bind_rows(df_interp, extra_sps, extra_nze)
+df_interp |> group_by(Scenario) |> summarise(ktons = sum(ktons) / 1e3, .groups = "drop") |> arrange(ktons)
 
 # Visual check
 pdat <- df_interp |> group_by(Mineral, Scenario, Year) |> summarise(ktons = sum(ktons), .groups = "drop")
@@ -135,16 +166,143 @@ ggplot(pdat, aes(Year, ktons, col = Scenario)) +
 
 table(df_interp$Scenario)
 
+
+# RATIO SHARES guess based on ratios of Ni-Co, Ni-Li and Li-Co -----------
+
+## ---- 1. intensity matrix A (rows = minerals, cols = chemistries) ----
+# From BatPac5.2 (https://pubs.acs.org/doi/abs/10.1021/acs.est.5c12420)
+# in kg per kWh
+# fmt: skip
+A <- matrix(c(
+  0,           0.317596994,0.436148562403854, 0.607822242, 0.655632282,  # Nickel
+  0,           0.318787104,0.175113165, 0.076262487, 0.123391704,  # Cobalt
+  0.088958365, 0.115469158,0.105714031, 0.092243627, 0.099365656   # Lithium
+), nrow = 3, byrow = TRUE)
+
+rownames(A) <- c("Nickel", "Cobalt", "Lithium")
+colnames(A) <- c("LFP", "NMC111", "NMC532", "NMC811", "NCA")
+
+# Only EV mineral demand
+df_ev <- df_interp %>%
+  filter(Mineral %in% c("Nickel", "Cobalt", "Lithium")) %>%
+  dplyr::select(-ktons) |>
+  pivot_wider(names_from = Mineral, values_from = ktons_ev)
+
+# Ni-Co ratio for EV demand
+# Chemistry Ni/Co ratios
+# NMC111 ~ 1
+A[1, 4] / A[2, 4] # NMC811 ~ 8
+A[1, 5] / A[2, 5] # NCA ~ 5.3
+df_ev %>%
+  filter(Scenario %in% c("SPS", "APS", "NZE")) %>%
+  filter(Year %in% seq(2025, 2050, 5)) %>%
+  mutate(ratio = Nickel / Cobalt) %>%
+  ggplot(aes(x = factor(Year), y = ratio)) +
+  geom_col(fill = "#378ADD") +
+  facet_wrap(~Scenario) +
+  labs(x = NULL, y = "Ni / Co ratio") +
+  theme_pb_large()
+# Ni-Co ratio tends to go towards 10
+
+# Ni-Li ratio for EV Demand
+A[1, 4] / A[3, 4] # NMC811 ~ 6.6
+A[1, 5] / A[3, 5] # NCA ~ 6.6
+# LFP zero Nickel, so no ratio
+df_ev %>%
+  filter(Scenario %in% c("SPS", "APS", "NZE")) %>%
+  filter(Year %in% seq(2025, 2050, 5)) %>%
+  mutate(ratio = Nickel / Lithium) %>%
+  ggplot(aes(x = factor(Year), y = ratio)) +
+  geom_col(fill = "#378ADD") +
+  facet_wrap(~Scenario) +
+  labs(x = NULL, y = "Ni / Li ratio") +
+  theme_pb_large()
+
+## Step one: Calculate LFP share based on Ni-Li ratio ------
+NMC_Ni_Li <- 6.6
+
+(lfp_share <- df_ev |>
+  mutate(Ni_Li_ratio = Nickel / Lithium, Ni_Co_ratio = Nickel / Cobalt) |>
+  mutate(share_LFP = 1 - (Nickel / Lithium) / NMC_Ni_Li) |>
+  mutate(share_NMC811 = 1 - share_LFP))
+
+# Figure
+df_ev |>
+  filter(Scenario %in% c("SPS", "APS", "NZE")) %>%
+  filter(Year %in% seq(2025, 2050, 5)) %>%
+  mutate(Ni_Li_ratio = Nickel / Lithium, Ni_Co_ratio = Nickel / Cobalt) |>
+  mutate(share_LFP = 1 - (Nickel / Lithium) / NMC_Ni_Li) |>
+  mutate(share_NMC811 = 1 - share_LFP) |>
+  dplyr::select(Year, Scenario, share_LFP, share_NMC811) |>
+  gather("Chemistry", "Share", -Year, -Scenario) |>
+  mutate(Scenario = factor(Scenario, levels = c("SPS", "APS", "NZE"))) |>
+  mutate(Chemistry = Chemistry |> str_remove("share_")) |>
+  ggplot(aes(Year, Share, fill = Chemistry)) +
+  geom_col(position = "stack",col = "black",linewidth=0.2) +
+  facet_wrap(~Scenario) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_x_continuous(breaks = seq(2025, 2050, 5)) +
+  coord_cartesian(expand = F) +
+  theme_pb_large()
+
+# fmt: skip
+ggsave("Figures/Demand/BatShare.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 8.7*2, height = 8.7)
+
+# Save LFP share in main csv
+df_save <- df_interp |> left_join(dplyr::select(lfp_share, Scenario, Year, share_LFP, Ni_Co_ratio))
+
+# Scenarios for figure
+# Scenarios for LFP share
+alpha <- seq(0.3, 0.9, by = 0.1)
+# Ni-Co ratio for NMC share (complement to LFP share)
+ni_co_ratio <- seq(6, 12, 1)
+
+ni_co_ratios <- df_ev |>
+  filter(Scenario %in% c("SPS", "APS", "NZE")) %>%
+  filter(Year %in% seq(2025, 2050, 5)) %>%
+  mutate(Ni_Li_ratio = Nickel / Lithium, Ni_Co_ratio = Nickel / Cobalt) |>
+  mutate(share_LFP = 1 - (Nickel / Lithium) / NMC_Ni_Li) |>
+  mutate(share_NMC811 = 1 - share_LFP) |>
+  mutate(B = Nickel + Cobalt) |> # Redistribute for NMC share
+  cross_join(expand.grid(alpha_new = alpha, r_new = ni_co_ratio)) |>
+  mutate(
+    # r/(1+r) and 1/(1+r) split budget B into Ni and Co shares implied by the proposed ratio
+    Ni_new = B * (1 - alpha_new) / share_LFP * (r_new / (1 + r_new)),
+    Co_new = B * (1 - alpha_new) / share_LFP * (1 / (1 + r_new)),
+    Li_new = Lithium
+  ) |>
+  mutate(test_ratio = Ni_new / Co_new, test_total = Ni_new + Co_new) # Check that the new ratios and totals are correct
+
+ni_co_ratios |>
+  mutate(Nickel = Ni_new, Cobalt = Co_new) |>
+  filter(Scenario == "NZE") |>
+  filter(Year == 2050) |>
+  dplyr::select(Nickel, Cobalt, alpha_new, r_new) |>
+  pivot_longer(c(Nickel, Cobalt), names_to = "mineral", values_to = "demand") |>
+  mutate(aux = paste0(mineral, r_new)) |>
+  mutate(alpha_new = paste0("LFP share =", round(alpha_new, 1) * 100, "%"), ) |>
+  ggplot(aes(x = factor(r_new), y = demand, fill = mineral, group = factor(aux))) +
+  geom_col(aes(alpha = factor(r_new)),col="black",linewidth=0.2) +
+  facet_grid(mineral ~ alpha_new, scales = "free_y") +
+  labs(y = "Battery Demand (ktons)", x = "Ni-Co Ratio assumption") +
+  theme_pb_large() +
+  theme(legend.position = "none")
+
+# ratio maters for Cobalt
+# fmt: skip
+ggsave("Figures/Demand/Scenarios_NiCo.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 8.7*3, height = 8.7*2)
+
+
 # Save ----------------------
 
 # Spread it to save
-df_wide <- df_interp |> mutate(Sector = NULL) |> pivot_wider(names_from = Mineral, values_from = ktons)
+df_wide <- df_save |> mutate(Sector = NULL) |> pivot_wider(names_from = Mineral, values_from = c(ktons, ktons_ev))
 nrow(df_wide) # 78 = 26 years * 3 scenarios
-
+names(df_wide) <- names(df_wide) |> str_remove("ktons_")
 write.csv(df_wide, "Parameters/IEA_Demand.csv", row.names = FALSE)
 
 
-# Figure ----------------------
+# Main Figure ----------------------
 
 df <- df |> mutate(Mineral = factor(Mineral, levels = c("Copper", "Nickel", "Cobalt", "Lithium")))
 

@@ -62,7 +62,7 @@ ggsave("Figures/Deposit/Lithium/li-water-use-intensity.png",ggplot2::last_plot()
 ggplot(df, aes(mine_type, FreshWater_m3_tonLi)) + geom_boxplot() + theme_pb_wide()
 
 mod <- lm(data = df, FreshWater_m3_tonLi ~ I(1 / ore_grade):mine_type - 1)
-summary(mod)
+summary(mod) # R2 0.78
 coefficients(mod)
 
 summary(lm(data = df, FreshWater_m3_tonLi ~ I(1 / ore_grade) - 1))
@@ -101,7 +101,7 @@ lm_summary_corrected(filter(df2, mine_type == "Clay")) # R2 -0.55
 df <- df |> mutate(model_class = if_else(mine_type == "Clay", "Hard Rock", mine_type))
 
 mod <- lm(data = df, FreshWater_m3_tonLi ~ I(1 / ore_grade):model_class - 1)
-summary(mod)
+summary(mod) # R2 0.78
 fill_coef <- tibble(mine_type = c("Brine", "Brine-DLE", "Hard Rock"), coef = coefficients(mod))
 fill_coef
 # the fitted coefficients for (1/grade Li) actually represents water consumption per ton of ore processed
@@ -109,5 +109,20 @@ fill_coef
 # 0.294 m3 water per m3 of brine processed using DLE method
 # 1.99 m3 water per ton of hard rock ore processed
 # NOTE: If we consider brine as water depletion then add 1m3 per m3 of brine processed
+
+# 95% CI
+confint(mod, level = 0.95)
+# Brine 0.52-0.69 m3 per m3 of brine processed using evaporation method
+# Brine-DLE 0.18-0.40 m3 per m3 of brine processed using DLE method
+# Hard Rock 0.66-3.3 m3 per ton of hard rock ore processed
+
+# Save results
+df <- tibble(
+  mine_type = c("Brine", "Brine-DLE", "Hard Rock"),
+  water_consumption_m3_per_ton_ore = coefficients(mod),
+  ci_lower_m3_per_ton_ore = confint(mod, level = 0.95)[, 1],
+  ci_upper_m3_per_ton_ore = confint(mod, level = 0.95)[, 2]
+)
+write.csv(df, "Parameters/Li_water_consumption_intensity.csv", row.names = F)
 
 # EoF
