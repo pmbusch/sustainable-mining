@@ -40,7 +40,7 @@ source('Scripts/00-Libraries.R', encoding = 'UTF-8')
 # -----------------------------------------------------------------------------
 
 SEED <- 24032026
-N_SAMPLES <- 500 # increase later as needed
+N_SAMPLES <- 1000 # increase later as needed
 MINERALS <- c("Copper", "Nickel", "Cobalt", "Lithium")
 
 # Mine-type grouping: raw values in mine_type column -> group label
