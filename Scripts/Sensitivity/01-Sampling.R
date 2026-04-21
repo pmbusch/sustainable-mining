@@ -40,7 +40,7 @@ source('Scripts/00-Libraries.R', encoding = 'UTF-8')
 # -----------------------------------------------------------------------------
 
 SEED <- 24032026
-N_SAMPLES <- 1000 # increase later as needed
+N_SAMPLES <- 10000
 MINERALS <- c("Copper", "Nickel", "Cobalt", "Lithium")
 
 # Mine-type grouping: raw values in mine_type column -> group label
@@ -113,7 +113,7 @@ print(table(db$mine_type_group, useNA = "ifany"))
 param_defs <- list()
 
 ## --- 3a. Demand scalars -------------------------------------------------------
-param_defs[["demand_level"]] <- list(min = 0, max = 2) # 0=SPS, 1=APS, 2=NZE
+param_defs[["demand_level"]] <- list(min = -0.25, max = 2.25) # <0: scale SPS, 0-1: SPS-APS, 1-2: APS-NZE, >2: scale NZE
 param_defs[["share_LFP"]] <- list(min = 0.3, max = 0.9)
 param_defs[["ni_co_ratio"]] <- list(min = 6, max = 12)
 param_defs[["desal_cost"]] <- list(min = 0.25, max = 1.5)
@@ -217,6 +217,11 @@ for (i in seq_along(param_defs)) {
 
 # Add sample ID
 sample_df <- sample_df %>% mutate(sample_id = seq_len(N_SAMPLES), .before = 1)
+
+# Bernoulli draws for desal and fish (independent of Sobol sequence)
+set.seed(SEED + 1)
+sample_df$desal <- rbinom(N_SAMPLES, 1, 0.5)
+sample_df$fish <- rbinom(N_SAMPLES, 1, 0.5)
 
 
 # -----------------------------------------------------------------------------

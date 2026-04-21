@@ -165,7 +165,8 @@ function runOptimization(
     cost_water_des = cost_water_des .* (1 ./ discounter')
 
     # Create optimization model
-    model = Model(Gurobi.Optimizer)
+    # model = Model(Gurobi.Optimizer)
+    model = Model(() -> Gurobi.Optimizer(GRB_ENV)) # for sample running to avoid collpasing SLURM
 
     # Decision variables
     @variable(model, x[1:d_size, 1:t_size] >= 0)  # Extraction

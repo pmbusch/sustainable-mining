@@ -159,9 +159,29 @@ data_fig <- prod %>%
     delta_profit = profit - ref_profit
   )
 
+dict_regions <- read.csv("Inputs/Dictionaries/Dict_Countries_Fig3.csv")
+
+region_colors_broad <- c(
+  "Latin America" = "#6a3d9a",
+  "North America" = "#33a02c",
+  "Europe" = "#1f78b4",
+  "Asia & Oceania" = "#d74c5a",
+  "Middle East & Africa" = "#8b4513"
+)
+
 data_fig <- data_fig |>
   dplyr::select(Scenario, country, delta_water, delta_profit, delta_revenue) |>
-  left_join(share_gdp)
+  left_join(share_gdp) |>
+  left_join(dict_regions) |>
+  # fix some country names endocidng
+  mutate(
+    Region = case_when(
+      !is.na(Region) ~ Region,
+      str_detect(country, "Ivoire") ~ "Middle East & Africa",
+      str_detect(country, "rkiye") ~ "Europe",
+      T ~ "NA"
+    )
+  )
 
 # remove countries with zero change
 data_fig <- data_fig |> filter(abs(delta_water) > 1e-3 | abs(delta_profit) > 1e-3)
@@ -183,17 +203,18 @@ data_fig |> group_by(Scenario) |> reframe(x = sum(delta_water))
 data_fig$Scenario <- recode(
   data_fig$Scenario,
   "5% Cost Increase" = "bold('5% Cost Increase')",
-  "Fish Biodiversity < 70" = "bold(Fish~Index~'< 70')",
-  "Water Desalination $0.5/m3" = "bold(Water~Desalination~'$0.5/m'^3)",
-  "Water Desalination $0.5/m3 + Fish Biodiversity < 70" = "bold(Desal.~'$0.5/m'^3~'+'~Fish~Index~'< 70')"
+  "Fish Biodiversity < 70" = "bold('+ Protect Fish-Rich Basins > 70')",
+  "Water Desalination $0.5/m3" = "bold('+ Water Desalination $0.5/m'^3)",
+  "Water Desalination $0.5/m3 + Fish Biodiversity < 70" = "bold('+ Desal. $0.5/m'^3~'+ Protect Fish > 70')"
 )
+
 data_fig$Scenario <- factor(
   data_fig$Scenario,
   levels = c(
     "bold('5% Cost Increase')",
-    "bold(Fish~Index~'< 70')",
-    "bold(Water~Desalination~'$0.5/m'^3)",
-    "bold(Desal.~'$0.5/m'^3~'+'~Fish~Index~'< 70')"
+    "bold('+ Protect Fish-Rich Basins > 70')",
+    "bold('+ Water Desalination $0.5/m'^3)",
+    "bold('+ Desal. $0.5/m'^3~'+ Protect Fish > 70')"
   )
 )
 table(data_fig$Scenario)
@@ -206,7 +227,7 @@ data_fig_text <- data_fig |>
 
 # Ranges scales
 range(data_fig$delta_water)
-range(data_fig$delta_water)
+range(data_fig$delta_profit)
 pseudo_log_breaks <- function(base = 10, symmetric = TRUE) {
   function(x) {
     x <- x[is.finite(x)]
@@ -232,10 +253,14 @@ pseudo_log_breaks <- function(base = 10, symmetric = TRUE) {
   }
 }
 
-# global change
-global_pt <- data_fig |>
+# regional and global aggregates for arrows
+region_agg <- data_fig |>
+  group_by(Scenario, Region) |>
+  summarise(water = sum(delta_water, na.rm = TRUE), profit = sum(delta_profit, na.rm = TRUE), .groups = "drop")
+
+global_agg <- data_fig |>
   group_by(Scenario) |>
-  summarise(water = sum(delta_water, na.rm = TRUE), profit = sum(delta_profit, na.rm = TRUE))
+  summarise(water = sum(delta_water, na.rm = TRUE), profit = sum(delta_profit, na.rm = TRUE), .groups = "drop")
 
 
 # Manual breaks
@@ -248,12 +273,22 @@ dx <- 0.1 # tick half-length (x units)
 dy <- 0.1 # tick half-length (y units)
 
 
-panel_labels <- data.frame(label = c("a", "b", "c", "d"), Scenario = unique(data_fig$Scenario))
+scen_levels <- c(
+  "bold('5% Cost Increase')",
+  "bold('+ Protect Fish-Rich Basins > 70')",
+  "bold('+ Water Desalination $0.5/m'^3)",
+  "bold('+ Desal. $0.5/m'^3~'+ Protect Fish > 70')"
+)
+data_fig$Scenario <- factor(data_fig$Scenario, levels = scen_levels)
+region_agg$Scenario <- factor(region_agg$Scenario, levels = scen_levels)
+global_agg$Scenario <- factor(global_agg$Scenario, levels = scen_levels)
+
+panel_labels <- data.frame(label = c("a", "b", "c", "d"), Scenario = scen_levels)
 
 
 text_font <- 7
 ggplot(data_fig, aes(x = delta_water, y = delta_profit)) +
-  facet_wrap(~Scenario, labeller = label_parsed) +
+  facet_wrap(~Scenario, labeller = label_parsed, ncol = 2, dir = "br") +
   geom_vline(xintercept = 0, col = "black", linewidth = 0.2) +
   # fmt: skip
   geom_segment(linewidth=0.2,data = data.frame(y = yb), aes(x = -dx, xend = dx, y = y, yend = y), inherit.aes = FALSE) +
@@ -284,7 +319,7 @@ ggplot(data_fig, aes(x = delta_water, y = delta_profit)) +
   annotate("text",x = 0.5,y = -max(abs(yr)),label = "Delta~Profit",parse = T,angle = 90,hjust = 0,vjust = 1,size = (text_font+1) * 5 / 14 * 0.8) +
   # fmt: skip
   annotate("text",x = 1.5,y = -max(abs(yr)),label = "(billion~USD)",parse = T,angle = 90,hjust = 0.2,vjust = 1,size = (text_font+1) * 5 / 14 * 0.8) +
-  geom_point(aes(size = gdp_share,fill=delta_profit),alpha=0.7,shape = 21, color = "black", stroke = 0.2) +
+  geom_point(aes(size = gdp_share, fill = Region), alpha = 0.7, shape = 21, color = "black", stroke = 0.2) +
   geom_text_repel(
     data = data_fig_text,
     aes(label = country),
@@ -295,9 +330,21 @@ ggplot(data_fig, aes(x = delta_water, y = delta_profit)) +
     min.segment.length = 0.05,
     max.overlaps = Inf
   ) +
-  geom_point(data = global_pt,aes(x = water, y = profit),inherit.aes = FALSE,color = "black",size = 2) +
-  # fmt: skip
-  geom_text(data = global_pt,aes(x = water, y = profit, label = "\u2206 Global"),nudge_y = c(0.2,0.2,-0.2,-0.2),hjust=0.2,inherit.aes = FALSE,size = text_font * 5 / 14 * 0.8) +
+  geom_segment(
+    data = region_agg,
+    aes(x = 0, y = 0, xend = water, yend = profit, color = Region),
+    alpha = 0.5,
+    linewidth = 0.35,
+    arrow = arrow(length = unit(0.08, "cm"), type = "closed"),
+    inherit.aes = FALSE
+  ) +
+  geomtextpath::geom_textsegment(
+    data = region_agg,
+    aes(x = 0, y = 0, xend = water, yend = profit, color = Region, label = as.character(Region)),
+    text_only = TRUE,
+    size = text_font * 5 / 14 * 0.8,
+    inherit.aes = FALSE
+  ) +
   # arrows
   # fmt: skip
   annotate("segment",col="#525252", x = 0, y = 600, xend = 1, yend = 600, arrow = arrow(length = unit(0.1, "cm"))) +
@@ -316,7 +363,7 @@ ggplot(data_fig, aes(x = delta_water, y = delta_profit)) +
   # fmt: skip
   annotate("text", x = -2100, y = -1.5, label = "Less profit", col="#525252",size = text_font * 5 / 14 * 0.8, vjust = 1) +
   # fmt: skip
-  geom_text(data = panel_labels, aes(label = label), 
+  geom_text(data = panel_labels, aes(label = label),
   x = -Inf, y = Inf, hjust = -0.2, vjust = 1.2,
   fontface = "bold", size = 14 * 5 / 14 * 0.8,
   colour = "black", inherit.aes = F) +
@@ -333,27 +380,12 @@ ggplot(data_fig, aes(x = delta_water, y = delta_profit)) +
     labels = scales::label_comma()
   ) +
   scale_size_continuous(range = c(0.1, 8), breaks = c(0.01, 0.05, 0.1, 0.2), labels = scales::percent) +
-  scale_fill_gradientn(
-    colours = c(
-      "#693829FF",
-      "#894B33FF",
-      "#A56A3EFF",
-      "#CFB267FF",
-      "#D9C5B6FF",
-      "#9CA9BAFF",
-      "#5480B5FF",
-      "#3D619DFF",
-      "#405A95FF",
-      "#345084FF"
-    ),
-    limits = c(min(data_fig$delta_profit), max(data_fig$delta_profit)),
-    values = scales::rescale(c(min(data_fig$delta_profit), 0, max(data_fig$delta_profit))),
-  ) +
-  # scale_fill_manual(values = rev(c("#171513ff", "#B45921FF", "#F49D63FF", "#FDC57AFF", "#FEEECFFF", "#F6F6F6FF"))) +
-  labs(x = "", y = "", size = "Battery Minerals\nGDP share") +
+  scale_fill_manual(values = region_colors_broad, na.value = "#808080") +
+  scale_color_manual(values = region_colors_broad, na.value = "#808080", guide = "none") +
+  labs(x = "", y = "", size = "Battery Minerals\nGDP share", fill = "Region") +
   coord_cartesian(clip = "on") +
   theme_pb_large() +
-  guides(fill = "none") +
+  guides(fill = "none", color = "none", size = guide_legend()) +
   theme(
     legend.position = "bottom",
     legend.background = element_blank(),
@@ -370,8 +402,6 @@ ggplot(data_fig, aes(x = delta_water, y = delta_profit)) +
   )
 
 # fmt: skip
-ggsave("Figures/Fig3_Country.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 8.7*2.1, height = 8.7*2.1)
-ggsave("Figures/Fig3_Country.svg", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 8.7 * 2.1, height = 8.7 * 2.1)
-# ggsave("Figures/Fig3_Country_fish.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 8.7, height = 8.7)
-# ggsave("Figures/Fig3_Country_fish_cost.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 8.7, height = 8.7)
-# ggsave("Figures/Fig3_Country_Des.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 8.7, height = 8.7)
+ggsave("Figures/Figure3_Country.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 18, height = 8.7*2.1)
+# fmt: skip
+ggsave("Figures/Figure3_Country.svg", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 18, height = 8.7 * 2.1)

@@ -117,7 +117,7 @@ nrow(result) # 11624
 # ----------------------------
 quantile(result$fish_index, probs = c(0.25, 0.5, 0.75, 0.9, 0.95, 0.98, 0.99, 0.995, 0.999), na.rm = TRUE) # 20 is p99
 # p98 is 8.5
-#p999 is 160
+#p99.9 is 160
 
 result |> filter(fish_index < 10) |> ggplot(aes(fish_index)) + stat_ecdf() + theme_pb_wide()
 
