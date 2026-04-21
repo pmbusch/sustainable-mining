@@ -258,6 +258,18 @@ region_agg <- data_fig |>
   group_by(Scenario, Region) |>
   summarise(water = sum(delta_water, na.rm = TRUE), profit = sum(delta_profit, na.rm = TRUE), .groups = "drop")
 
+# text placement
+region_agg <- region_agg %>%
+  mutate(
+    label_vjust = case_when(
+      str_detect(Scenario, "5% Cost") & Region %in% c("Middle East & Africa", "Europe") ~ 1,
+      str_detect(Scenario, "Fish-Rich") & Region %in% c("Latin America", "North America", "Asia & Oceania") ~ 1,
+      str_detect(Scenario, "Desalination") & Region %in% c("Middle East & Africa", "Latin America") ~ 1,
+      str_detect(Scenario, "Desal\\.") & Region %in% c("Middle East & Africa", "Latin America") ~ 1,
+      TRUE ~ 0
+    )
+  )
+
 global_agg <- data_fig |>
   group_by(Scenario) |>
   summarise(water = sum(delta_water, na.rm = TRUE), profit = sum(delta_profit, na.rm = TRUE), .groups = "drop")
@@ -340,9 +352,10 @@ ggplot(data_fig, aes(x = delta_water, y = delta_profit)) +
   ) +
   geomtextpath::geom_textsegment(
     data = region_agg,
-    aes(x = 0, y = 0, xend = water, yend = profit, color = Region, label = as.character(Region)),
+    aes(x = 0, y = 0, xend = water, yend = profit, color = Region, label = as.character(Region), vjust = label_vjust),
     text_only = TRUE,
     size = text_font * 5 / 14 * 0.8,
+    hjust = 0.85, # 1 = end, adjust to taste
     inherit.aes = FALSE
   ) +
   # arrows
@@ -355,13 +368,13 @@ ggplot(data_fig, aes(x = delta_water, y = delta_profit)) +
   # fmt: skip
   annotate("text", x = -1.5, y = 600, label = "Less water\nimpact", col="#525252",size = text_font * 5 / 14 * 0.8, hjust = 1) +
   # fmt: skip
-  annotate("segment",col="#525252", x = -2100, y = 0, xend = -2100, yend = 1, arrow = arrow(length = unit(0.1, "cm"))) +
+  annotate("segment",col="#525252", x = -2000, y = 0, xend = -2000, yend = 1, arrow = arrow(length = unit(0.1, "cm"))) +
   # fmt: skip
-  annotate("segment",col="#525252", x = -2100, y = 0, xend = -2100, yend = -1, arrow = arrow(length = unit(0.1, "cm"))) +
+  annotate("segment",col="#525252", x = -2000, y = 0, xend = -2000, yend = -1, arrow = arrow(length = unit(0.1, "cm"))) +
   # fmt: skip
-  annotate("text", x = -2100, y = 1.5, label = "More profit", col="#525252",size = text_font * 5 / 14 * 0.8, vjust = 0) +
+  annotate("text", x = -2000, y = 1.5, label = "More profit", col="#525252",size = text_font * 5 / 14 * 0.8, vjust = 0) +
   # fmt: skip
-  annotate("text", x = -2100, y = -1.5, label = "Less profit", col="#525252",size = text_font * 5 / 14 * 0.8, vjust = 1) +
+  annotate("text", x = -2000, y = -1.5, label = "Less profit", col="#525252",size = text_font * 5 / 14 * 0.8, vjust = 1) +
   # fmt: skip
   geom_text(data = panel_labels, aes(label = label),
   x = -Inf, y = Inf, hjust = -0.2, vjust = 1.2,
@@ -383,7 +396,7 @@ ggplot(data_fig, aes(x = delta_water, y = delta_profit)) +
   scale_fill_manual(values = region_colors_broad, na.value = "#808080") +
   scale_color_manual(values = region_colors_broad, na.value = "#808080", guide = "none") +
   labs(x = "", y = "", size = "Battery Minerals\nGDP share", fill = "Region") +
-  coord_cartesian(clip = "on") +
+  coord_cartesian(clip = "off") +
   theme_pb_large() +
   guides(fill = "none", color = "none", size = guide_legend()) +
   theme(
