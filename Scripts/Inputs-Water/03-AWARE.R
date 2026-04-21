@@ -195,7 +195,7 @@ deposit <- deposit %>%
   # Low and High for sensitivity
   mutate(
     water_low = case_when(
-      water_fill == "Literature" & water ~ water * 0.75,
+      water_fill == "Literature" & water ~ water * 0.50,
       mine_type == "Brine" ~ lithium_water_intensity[1, 3] + 1,
       mine_type == "Brine DLE" ~ lithium_water_intensity[2, 3] + 1,
       mine_type %in% c("Hard Rock", "Clay") ~ lithium_water_intensity[3, 3],
@@ -204,7 +204,7 @@ deposit <- deposit %>%
   ) |>
   mutate(
     water_high = case_when(
-      water_fill == "Literature" & water ~ water * 1.1,
+      water_fill == "Literature" & water ~ water * 1.25,
       mine_type == "Brine" ~ lithium_water_intensity[1, 4] + 1,
       mine_type == "Brine DLE" ~ lithium_water_intensity[2, 4] + 1,
       mine_type %in% c("Hard Rock", "Clay") ~ lithium_water_intensity[3, 4],

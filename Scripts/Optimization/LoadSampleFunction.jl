@@ -111,12 +111,18 @@ function load_sample(sample_index::Int, deposit; save_deposit::Bool=false)
     # Blend SPS→APS for dl ∈ [0,1], APS→NZE for dl ∈ [1,2]
 
     function blend_col(col::Symbol)
-        if dl <= 1.0
-            w = dl                    # weight on APS (0 = pure SPS, 1 = pure APS)
+        if dl < 0.0
+            # dl=-0.25 → 0.75×SPS (linear scale below SPS)
+            return (1.0 + dl) .* dem_sps[!, col]
+        elseif dl <= 1.0
+            w = dl
             return (1 - w) .* dem_sps[!, col] .+ w .* dem_aps[!, col]
-        else
-            w = dl - 1.0              # weight on NZE (0 = pure APS, 1 = pure NZE)
+        elseif dl <= 2.0
+            w = dl - 1.0
             return (1 - w) .* dem_aps[!, col] .+ w .* dem_nze[!, col]
+        else
+            # dl=2.25 → 1.25×NZE (linear scale above NZE)
+            return (1.0 + (dl - 2.0)) .* dem_nze[!, col]
         end
     end
 
@@ -283,7 +289,9 @@ function load_sample(sample_index::Int, deposit; save_deposit::Bool=false)
     #   Pass the returned value as the keyword argument to runOptimization().
     # -------------------------------------------------------------------------
 
-    cost_water_des = s.desal_cost
+    # Bernoulli draws determine whether desal/fish constraint is active
+    cost_water_des   = s.desal == 1 ? s.desal_cost    : 1001.0
+    fish_threshold   = s.fish  == 1 ? 100.0            : s.fish_threshold
 
     # -------------------------------------------------------------------------
     # 5. RETURN
@@ -291,13 +299,13 @@ function load_sample(sample_index::Int, deposit; save_deposit::Bool=false)
 
     println("  Demand rows:   $(nrow(demand))  ($(minimum(demand.Year))–$(maximum(demand.Year)))")
     println("  Deposit rows:  $(nrow(deposit))")
-    println("  Desal cost:    $(round(cost_water_des, digits=1)) USD/m3")
-    println("  Fish threshold: $(round(s.fish_threshold, digits=1))")
+    println("  Desal:         $(s.desal == 1 ? "active @ $(round(cost_water_des, digits=2)) USD/m3" : "inactive")")
+    println("  Fish:          $(s.fish  == 1 ? "strict (100)" : "baseline ($(round(fish_threshold, digits=1)))")")
 
     if save_deposit
-        path = "Parameters/Sample_Runs/deposit_sample_$(lpad(sample_index, 3, '0')).csv"
+        path = "Parameters/Sample_Runs/deposit_sample_$(lpad(sample_index, 4, '0')).csv"
         CSV.write(path, deposit)
     end
 
-    return demand, deposit, cost_water_des, s.fish_threshold
+    return demand, deposit, cost_water_des, fish_threshold
 end
