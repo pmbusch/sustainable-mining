@@ -24,14 +24,14 @@ library(janitor)
 
 demand_per_sample <- read.csv("Parameters/demand_per_sample.csv")
 
-
 # -----------------------------------------------------------------------------
 # 1. CONFIGURATION ------------------------------------------------------------
 # -----------------------------------------------------------------------------
 
-PATH_RESULTS <- "Results/Optimization/Samples"
+PATH_RESULTS <- "../sustainable-mining-samples/samples" # outside project dir, if not then it collapses
 PATH_SAMPLES <- "Parameters/samples.csv"
 PATH_OUTPUT <- "Results/SensitivityAnalysis/"
+PATH_BATCHES <- "Results/SensitivityAnalysis/batches/"
 
 # Epsilon level lookup — filename prefix -> numeric epsilon
 EPSILON_MAP <- c("Base" = 0.00, "Water_Eps01" = 0.01, "Water_Eps05" = 0.05, "Water_Eps10" = 0.10, "Water_Eps25" = 0.25)
@@ -40,13 +40,20 @@ EPSILON_MAP <- c("Base" = 0.00, "Water_Eps01" = 0.01, "Water_Eps05" = 0.05, "Wat
 # fmt: skip
 METRIC_PARAMS <- c("Cost","Water impact","Slack cost","Slack Copper","Slack Nickel","Slack Cobalt","Slack Lithium")
 
+N_BATCHES <- 20 # number of batches; increase if memory is still tight
+
 # -----------------------------------------------------------------------------
-# 2. LOAD ALL METRICS FILES ---------------------------------------------------
+# 2. LOAD METRICS IN BATCHES — one row per sample x epsilon ------------------
 # -----------------------------------------------------------------------------
 
 cat("Loading metrics files...\n")
 
-metric_files <- list.files(PATH_RESULTS, pattern = "_Metrics\\.csv$", recursive = TRUE, full.names = TRUE)
+all_sample_ids <- sort(read_csv(PATH_SAMPLES, show_col_types = FALSE, col_select = "sample_id")$sample_id)
+metric_files <- as.character(outer(
+  sprintf("%s/%04d", PATH_RESULTS, all_sample_ids),
+  paste0(names(EPSILON_MAP), "_Metrics.csv"),
+  file.path
+))
 
 cat(sprintf(
   "  Found %d metrics files across %d sample folders\n",
@@ -54,53 +61,65 @@ cat(sprintf(
   length(unique(dirname(metric_files)))
 ))
 
-metrics_raw <- lapply(metric_files, function(fp) {
-  # sample_id from parent folder name (e.g. "0035")
-  sample_id <- as.integer(basename(dirname(fp)))
+# Split sample folders into batches to avoid loading all files into RAM at once
+all_sample_ids <- sort(unique(as.integer(basename(dirname(metric_files)))))
+batch_ids <- split(all_sample_ids, ceiling(seq_along(all_sample_ids) / ceiling(length(all_sample_ids) / N_BATCHES)))
 
-  # epsilon from filename prefix
+dir.create(PATH_BATCHES, showWarnings = FALSE, recursive = TRUE)
+
+process_one_file <- function(fp) {
+  sample_id <- as.integer(basename(dirname(fp)))
   file_prefix <- sub("_Metrics\\.csv$", "", basename(fp))
   epsilon <- EPSILON_MAP[file_prefix]
-
   if (is.na(epsilon)) {
     return(NULL)
   }
-
   df <- tryCatch(read_csv(fp, show_col_types = FALSE), error = function(e) NULL)
   if (is.null(df)) {
     return(NULL)
   }
-
   df %>%
     filter(Parameter %in% METRIC_PARAMS) %>%
     select(Parameter, Value) %>%
     mutate(sample_id = sample_id, epsilon = epsilon)
-})
+}
 
-metrics_raw <- bind_rows(metrics_raw)
-cat(sprintf("  Loaded %d rows from metrics files\n", nrow(metrics_raw)))
+reshape_to_wide <- function(raw) {
+  raw %>%
+    pivot_wider(id_cols = c(sample_id, epsilon), names_from = Parameter, values_from = Value) %>%
+    clean_names() %>%
+    mutate(slack_total = slack_copper + slack_nickel + slack_cobalt + slack_lithium) %>%
+    arrange(sample_id, epsilon)
+}
 
-# -----------------------------------------------------------------------------
-# 3. RESHAPE TO WIDE FORMAT — one row per sample x epsilon --------------------
-# -----------------------------------------------------------------------------
+cat(sprintf("  Processing %d batches of ~%d samples each...\n", length(batch_ids), length(batch_ids[[1]])))
 
-metrics_wide <- metrics_raw %>%
-  pivot_wider(id_cols = c(sample_id, epsilon), names_from = Parameter, values_from = Value) %>%
-  clean_names() %>%
-  rename(
-    water_impact = water_impact,
-    cost = cost,
-    slack_cost = slack_cost,
-    slack_copper = slack_copper,
-    slack_nickel = slack_nickel,
-    slack_cobalt = slack_cobalt,
-    slack_lithium = slack_lithium
-  ) %>%
-  mutate(slack_total = slack_copper + slack_nickel + slack_cobalt + slack_lithium) %>%
-  arrange(sample_id, epsilon)
+for (b in seq_along(batch_ids)) {
+  batch_file <- sprintf("%sbatch_%03d.csv", PATH_BATCHES, b)
 
-cat(sprintf("  Reshaped to %d rows x %d columns\n", nrow(metrics_wide), ncol(metrics_wide)))
+  if (file.exists(batch_file)) {
+    cat(sprintf("  Batch %d/%d — skipping (already saved)\n", b, length(batch_ids)))
+    next
+  }
 
+  cat(sprintf("  Batch %d/%d — samples %d to %d...\n", b, length(batch_ids), min(batch_ids[[b]]), max(batch_ids[[b]])))
+
+  batch_files <- metric_files[as.integer(basename(dirname(metric_files))) %in% batch_ids[[b]]]
+  batch_raw <- bind_rows(lapply(batch_files, process_one_file))
+  batch_wide <- reshape_to_wide(batch_raw)
+
+  write_csv(batch_wide, batch_file)
+  rm(batch_raw, batch_wide)
+  gc()
+}
+
+cat("  All batches done. Consolidating...\n")
+
+batch_csv_files <- list.files(PATH_BATCHES, pattern = "^batch_\\d+\\.csv$", full.names = TRUE)
+metrics_wide <- bind_rows(lapply(batch_csv_files, read_csv, show_col_types = FALSE)) %>% arrange(sample_id, epsilon)
+
+cat(sprintf("  Consolidated: %d rows x %d columns\n", nrow(metrics_wide), ncol(metrics_wide)))
+head(metrics_wide)
 
 # -----------------------------------------------------------------------------
 # 4. LOAD AND JOIN SAMPLE INPUTS ----------------------------------------------
@@ -224,6 +243,7 @@ real_lookup <- bind_rows(lapply(names(DEPOSIT_PARAMS_R), function(param_key) {
 }))
 
 # Apply lookup vectorised: add _real_ columns to samples then join to data_full
+# convert unitless random draw (0 to 1) to actual unit of a parameter
 samples_real <- samples
 for (i in seq_len(nrow(real_lookup))) {
   sc <- real_lookup$sample_col[i]
@@ -262,5 +282,6 @@ data_full <- data_full |>
 # SAVE JOINED DATASET ---------------------------------------------------------
 # -----------------------------------------------------------------------------
 
+dim(data_full)
 write_csv(data_full, paste0(PATH_OUTPUT, "sa_results_full.csv"))
 cat(sprintf("\nFull dataset saved: %s\n", paste0(PATH_OUTPUT, "sa_results_full.csv")))
