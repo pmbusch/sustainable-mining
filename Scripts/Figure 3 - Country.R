@@ -166,7 +166,8 @@ region_colors_broad <- c(
   "North America" = "#33a02c",
   "Europe" = "#1f78b4",
   "Asia & Oceania" = "#d74c5a",
-  "Middle East & Africa" = "#8b4513"
+  "Middle East & Africa" = "#8b4513",
+  "World" = "#252525"
 )
 
 data_fig <- data_fig |>
@@ -203,18 +204,18 @@ data_fig |> group_by(Scenario) |> reframe(x = sum(delta_water))
 data_fig$Scenario <- recode(
   data_fig$Scenario,
   "5% Cost Increase" = "bold('5% Cost Increase')",
-  "Fish Biodiversity < 70" = "bold('+ Protect Fish-Rich Basins > 70')",
-  "Water Desalination $0.5/m3" = "bold('+ Water Desalination $0.5/m'^3)",
-  "Water Desalination $0.5/m3 + Fish Biodiversity < 70" = "bold('+ Desal. $0.5/m'^3~'+ Protect Fish > 70')"
+  "Fish Biodiversity < 70" = "bold('+5% Cost + Protect Fish-Rich Basins > 70')",
+  "Water Desalination $0.5/m3" = "bold('+5% Cost + Water Desalination $0.5/m'^3)",
+  "Water Desalination $0.5/m3 + Fish Biodiversity < 70" = "bold('+5% Cost + Desal. $0.5/m'^3~'+ Protect Fish > 70')"
 )
 
 data_fig$Scenario <- factor(
   data_fig$Scenario,
   levels = c(
     "bold('5% Cost Increase')",
-    "bold('+ Protect Fish-Rich Basins > 70')",
-    "bold('+ Water Desalination $0.5/m'^3)",
-    "bold('+ Desal. $0.5/m'^3~'+ Protect Fish > 70')"
+    "bold('+5% Cost + Protect Fish-Rich Basins > 70')",
+    "bold('+5% Cost + Water Desalination $0.5/m'^3)",
+    "bold('+5% Cost + Desal. $0.5/m'^3~'+ Protect Fish > 70')"
   )
 )
 table(data_fig$Scenario)
@@ -257,22 +258,22 @@ pseudo_log_breaks <- function(base = 10, symmetric = TRUE) {
 region_agg <- data_fig |>
   group_by(Scenario, Region) |>
   summarise(water = sum(delta_water, na.rm = TRUE), profit = sum(delta_profit, na.rm = TRUE), .groups = "drop")
+global_agg <- data_fig |>
+  group_by(Scenario) |>
+  summarise(water = sum(delta_water, na.rm = TRUE), profit = sum(delta_profit, na.rm = TRUE), .groups = "drop")
+region_agg <- rbind(region_agg, global_agg |> mutate(Region = "World"))
 
 # text placement
 region_agg <- region_agg %>%
   mutate(
     label_vjust = case_when(
-      str_detect(Scenario, "5% Cost") & Region %in% c("Middle East & Africa", "Europe") ~ 1,
+      str_detect(Scenario, "5% Cost") & Region %in% c("Middle East & Africa", "Europe", "World") ~ 1,
       str_detect(Scenario, "Fish-Rich") & Region %in% c("Latin America", "North America", "Asia & Oceania") ~ 1,
       str_detect(Scenario, "Desalination") & Region %in% c("Middle East & Africa", "Latin America") ~ 1,
       str_detect(Scenario, "Desal\\.") & Region %in% c("Middle East & Africa", "Latin America") ~ 1,
       TRUE ~ 0
     )
   )
-
-global_agg <- data_fig |>
-  group_by(Scenario) |>
-  summarise(water = sum(delta_water, na.rm = TRUE), profit = sum(delta_profit, na.rm = TRUE), .groups = "drop")
 
 
 # Manual breaks
@@ -287,16 +288,14 @@ dy <- 0.1 # tick half-length (y units)
 
 scen_levels <- c(
   "bold('5% Cost Increase')",
-  "bold('+ Protect Fish-Rich Basins > 70')",
-  "bold('+ Water Desalination $0.5/m'^3)",
-  "bold('+ Desal. $0.5/m'^3~'+ Protect Fish > 70')"
+  "bold('+5% Cost + Protect Fish-Rich Basins > 70')",
+  "bold('+5% Cost + Water Desalination $0.5/m'^3)",
+  "bold('+5% Cost + Desal. $0.5/m'^3~'+ Protect Fish > 70')"
 )
 data_fig$Scenario <- factor(data_fig$Scenario, levels = scen_levels)
 region_agg$Scenario <- factor(region_agg$Scenario, levels = scen_levels)
-global_agg$Scenario <- factor(global_agg$Scenario, levels = scen_levels)
 
 panel_labels <- data.frame(label = c("a", "b", "c", "d"), Scenario = scen_levels)
-
 
 text_font <- 7
 ggplot(data_fig, aes(x = delta_water, y = delta_profit)) +
@@ -313,9 +312,9 @@ ggplot(data_fig, aes(x = delta_water, y = delta_profit)) +
   inherit.aes = FALSE
 ) +
   # fmt: skip
-  annotate("text",x = max(abs(xr)),y = 3,label = "Delta~Freshwater~Impact",parse = T,hjust = 0.8,vjust = 1,size = (text_font+1) * 5 / 14 * 0.8) +
+  annotate("text",x = max(abs(xr)),y = 3,label = "Delta~Water~Scarcity~Footprint",parse = T,hjust = 0.7,vjust = 1,size = (text_font+1) * 5 / 14 * 0.8) +
   # fmt: skip
-  annotate("text",x = max(abs(xr)),y = 1.5,label = "(billion~m^3*-eq)",parse = T,hjust = 0.8,vjust = 1,size = (text_font+1) * 5 / 14 * 0.8) +
+  annotate("text",x = max(abs(xr)),y = 1.5,label = "(billion~m^3*-eq)",parse = T,hjust = 0.7,vjust = 1,size = (text_font+1) * 5 / 14 * 0.8) +
   geom_hline(yintercept = 0, col = "black", linewidth = 0.2) +
   # fmt: skip
   geom_segment(linewidth=0.2,data = data.frame(x = xb), aes(y = -dy, yend = dy, x = x, xend = x), inherit.aes = FALSE) +
@@ -328,9 +327,9 @@ ggplot(data_fig, aes(x = delta_water, y = delta_profit)) +
   inherit.aes = FALSE
 ) +
   # fmt: skip
-  annotate("text",x = 0.5,y = -max(abs(yr)),label = "Delta~Profit",parse = T,angle = 90,hjust = 0,vjust = 1,size = (text_font+1) * 5 / 14 * 0.8) +
+  annotate("text",x = 0.5,y = -max(abs(yr)),label = "Delta~Profit",parse = T,angle = 90,hjust = 0.3,vjust = 1,size = (text_font+1) * 5 / 14 * 0.8) +
   # fmt: skip
-  annotate("text",x = 1.5,y = -max(abs(yr)),label = "(billion~USD)",parse = T,angle = 90,hjust = 0.2,vjust = 1,size = (text_font+1) * 5 / 14 * 0.8) +
+  annotate("text",x = 1.5,y = -max(abs(yr)),label = "(billion~USD)",parse = T,angle = 90,hjust = 0.4,vjust = 1,size = (text_font+1) * 5 / 14 * 0.8) +
   geom_point(aes(size = gdp_share, fill = Region), alpha = 0.7, shape = 21, color = "black", stroke = 0.2) +
   geom_text_repel(
     data = data_fig_text,
@@ -364,9 +363,9 @@ ggplot(data_fig, aes(x = delta_water, y = delta_profit)) +
   # fmt: skip
   annotate("segment",col="#525252", x = 0, y = 600, xend = -1, yend = 600, arrow = arrow(length = unit(0.1, "cm"))) +
   # fmt: skip
-  annotate("text", x = 1.5, y = 600, label = "More water\nimpact", col="#525252",size = text_font * 5 / 14 * 0.8, hjust = 0) +
+  annotate("text", x = 1.5, y = 600, label = "More water\nfootprint", col="#525252",size = text_font * 5 / 14 * 0.8, hjust = 0) +
   # fmt: skip
-  annotate("text", x = -1.5, y = 600, label = "Less water\nimpact", col="#525252",size = text_font * 5 / 14 * 0.8, hjust = 1) +
+  annotate("text", x = -1.5, y = 600, label = "Less water\nfootprint", col="#525252",size = text_font * 5 / 14 * 0.8, hjust = 1) +
   # fmt: skip
   annotate("segment",col="#525252", x = -2000, y = 0, xend = -2000, yend = 1, arrow = arrow(length = unit(0.1, "cm"))) +
   # fmt: skip
@@ -395,7 +394,13 @@ ggplot(data_fig, aes(x = delta_water, y = delta_profit)) +
   scale_size_continuous(range = c(0.1, 8), breaks = c(0.01, 0.05, 0.1, 0.2), labels = scales::percent) +
   scale_fill_manual(values = region_colors_broad, na.value = "#808080") +
   scale_color_manual(values = region_colors_broad, na.value = "#808080", guide = "none") +
-  labs(x = "", y = "", size = "Battery Minerals\nGDP share", fill = "Region") +
+  labs(
+    x = "",
+    y = "",
+    size = "Battery Minerals\nGDP share",
+    fill = "Region",
+    title = "Country-level changes in profit and water scarcity footprint relative to cost-optimal baseline"
+  ) +
   coord_cartesian(clip = "off") +
   theme_pb_large() +
   guides(fill = "none", color = "none", size = guide_legend()) +
@@ -415,6 +420,212 @@ ggplot(data_fig, aes(x = delta_water, y = delta_profit)) +
   )
 
 # fmt: skip
-ggsave("Figures/Figure3_Country.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 18, height = 8.7*2.1)
+ggsave("Figures/Figure3.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 18, height = 18)
 # fmt: skip
-ggsave("Figures/Figure3_Country.svg", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 18, height = 8.7 * 2.1)
+ggsave("Figures/Figure3.svg", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 18, height = 18)
+
+# Option B - equal size ------------------------
+
+data_fig <- data_fig |> mutate(alpha_mapped = pmin(gdp_share, 0.30))
+p2 <- ggplot(data_fig, aes(x = delta_water, y = delta_profit)) +
+  facet_wrap(~Scenario, labeller = label_parsed, ncol = 2, dir = "br") +
+  geom_vline(xintercept = 0, col = "black", linewidth = 0.2) +
+  # fmt: skip
+  geom_segment(linewidth=0.2,data = data.frame(y = yb), aes(x = -dx, xend = dx, y = y, yend = y), inherit.aes = FALSE) +
+  geom_text(
+  data = data.frame(y = yb),
+  aes(x = -2*dx, y = y,
+      label = scales::dollar(y, accuracy = 1, big.mark = ",")),
+  hjust = 1,
+  size = text_font * 5 / 14 * 0.8,
+  inherit.aes = FALSE
+) +
+  # fmt: skip
+  annotate("text",x = max(abs(xr)),y = 3,label = "Delta~Water~Scarcity~Footprint",parse = T,hjust = 0.7,vjust = 1,size = (text_font+1) * 5 / 14 * 0.8) +
+  # fmt: skip
+  annotate("text",x = max(abs(xr)),y = 1.5,label = "(billion~m^3*-eq)",parse = T,hjust = 0.7,vjust = 1,size = (text_font+1) * 5 / 14 * 0.8) +
+  geom_hline(yintercept = 0, col = "black", linewidth = 0.2) +
+  # fmt: skip
+  geom_segment(linewidth=0.2,data = data.frame(x = xb), aes(y = -dy, yend = dy, x = x, xend = x), inherit.aes = FALSE) +
+  geom_text(
+  data = data.frame(x = xb),
+  aes(y = -2*dy, x = x,
+      label = scales::comma(x)),
+  vjust = 1,
+  size = text_font * 5 / 14 * 0.8,
+  inherit.aes = FALSE
+) +
+  # fmt: skip
+  annotate("text",x = 0.5,y = -max(abs(yr)),label = "Delta~Profit",parse = T,angle = 90,hjust = 0.3,vjust = 1,size = (text_font+1) * 5 / 14 * 0.8) +
+  # fmt: skip
+  annotate("text",x = 1.5,y = -max(abs(yr)),label = "(billion~USD)",parse = T,angle = 90,hjust = 0.4,vjust = 1,size = (text_font+1) * 5 / 14 * 0.8) +
+  geom_point(aes(fill=Region,alpha = alpha_mapped), shape = 21, color = "black", stroke = 0.2) +
+  geom_text_repel(
+    data = data_fig_text,
+    aes(label = country),
+    size = text_font * 5 / 14 * 0.8,
+    box.padding = 0.15,
+    point.padding = 0.1,
+    segment.size = 0.2,
+    min.segment.length = 0.05,
+    max.overlaps = Inf
+  ) +
+  geom_segment(
+    data = region_agg,
+    aes(x = 0, y = 0, xend = water, yend = profit, color = Region),
+    alpha = 0.5,
+    linewidth = 0.35,
+    arrow = arrow(length = unit(0.08, "cm"), type = "closed"),
+    inherit.aes = FALSE
+  ) +
+  geomtextpath::geom_textsegment(
+    data = region_agg,
+    aes(x = 0, y = 0, xend = water, yend = profit, color = Region, label = as.character(Region), vjust = label_vjust),
+    text_only = TRUE,
+    size = text_font * 5 / 14 * 0.8,
+    hjust = 0.85, # 1 = end, adjust to taste
+    inherit.aes = FALSE
+  ) +
+  # arrows
+  # fmt: skip
+  annotate("segment",col="#525252", x = 0, y = 600, xend = 1, yend = 600, arrow = arrow(length = unit(0.1, "cm"))) +
+  # fmt: skip
+  annotate("segment",col="#525252", x = 0, y = 600, xend = -1, yend = 600, arrow = arrow(length = unit(0.1, "cm"))) +
+  # fmt: skip
+  annotate("text", x = 1.5, y = 600, label = "More water\nfootprint", col="#525252",size = text_font * 5 / 14 * 0.8, hjust = 0) +
+  # fmt: skip
+  annotate("text", x = -1.5, y = 600, label = "Less water\nfootprint", col="#525252",size = text_font * 5 / 14 * 0.8, hjust = 1) +
+  # fmt: skip
+  annotate("segment",col="#525252", x = -2000, y = 0, xend = -2000, yend = 1, arrow = arrow(length = unit(0.1, "cm"))) +
+  # fmt: skip
+  annotate("segment",col="#525252", x = -2000, y = 0, xend = -2000, yend = -1, arrow = arrow(length = unit(0.1, "cm"))) +
+  # fmt: skip
+  annotate("text", x = -2000, y = 1.5, label = "More profit", col="#525252",size = text_font * 5 / 14 * 0.8, vjust = 0) +
+  # fmt: skip
+  annotate("text", x = -2000, y = -1.5, label = "Less profit", col="#525252",size = text_font * 5 / 14 * 0.8, vjust = 1) +
+  # fmt: skip
+  geom_text(data = panel_labels, aes(label = label),
+  x = -Inf, y = Inf, hjust = -0.2, vjust = 1.2,
+  fontface = "bold", size = 14 * 5 / 14 * 0.8,
+  colour = "black", inherit.aes = F) +
+  scale_y_continuous(
+    trans = scales::pseudo_log_trans(base = 10),
+    breaks = pseudo_log_breaks(symmetric = T),
+    limits = function(x) c(-max(abs(x)), max(abs(x))),
+    labels = dollar_format(big.mark = ",", prefix = "$", accuracy = 1)
+  ) +
+  scale_x_continuous(
+    trans = scales::pseudo_log_trans(base = 10),
+    limits = function(x) c(-max(abs(x)), max(abs(x))),
+    breaks = pseudo_log_breaks(symmetric = T),
+    labels = scales::label_comma()
+  ) +
+  scale_fill_manual(values = region_colors_broad, na.value = "#808080") +
+  scale_alpha_continuous(range = c(1, 0.1), labels = scales::percent, trans = scales::exp_trans(0.8)) +
+  scale_color_manual(values = region_colors_broad, na.value = "#808080", guide = "none") +
+  labs(
+    x = "",
+    y = "",
+    size = "Battery Minerals\nGDP share",
+    fill = "Region",
+    title = "Country-level changes in profit and water scarcity footprint relative to cost-optimal baseline"
+  ) +
+  coord_cartesian(clip = "off") +
+  theme_pb_large() +
+  guides(color = "none", alpha = guide_legend()) +
+  theme(
+    legend.position = "none",
+    legend.background = element_blank(),
+    legend.key.size = unit(0.3, "lines"),
+    plot.title = element_text(size = 10, hjust = 0.5),
+    axis.line = element_blank(), # removes default bottom/left axes
+    axis.ticks = element_blank(),
+    axis.text = element_blank(),
+    axis.title = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.border = element_blank(),
+    # plot.background = element_blank(),
+    panel.background = element_blank()
+  )
+p2
+
+# custom legend
+library(patchwork)
+
+# Create continuous gradient data
+region_levels <- names(region_colors_broad)[1:5]
+
+legend_data <- expand.grid(
+  Region = factor(region_levels, levels = region_levels),
+  gdp_share = seq(0.001, 0.30, length.out = 200)
+) |>
+  mutate(region_int = as.integer(Region)) |>
+  group_by(Region) |>
+  mutate(xmin = gdp_share, xmax = lead(gdp_share, default = 0.40)) |>
+  ungroup()
+
+outline_data <- data.frame(
+  Region = factor(region_levels, levels = region_levels),
+  region_int = seq_along(region_levels)
+)
+
+legend_plot <- ggplot() +
+  geom_rect(
+    data = legend_data,
+    aes(xmin = xmin, xmax = xmax, ymin = region_int - 0.5, ymax = region_int + 0.5, fill = Region, alpha = gdp_share),
+    color = NA
+  ) +
+  geom_rect(
+    data = outline_data,
+    aes(ymin = region_int - 0.5, ymax = region_int + 0.5),
+    xmin = 0,
+    xmax = 0.40,
+    fill = NA,
+    color = "black",
+    linewidth = 0.3
+  ) +
+  geom_text(
+    data = outline_data,
+    aes(
+      x     = 0.01,
+      y     = region_int,
+      label = Region,
+      color = Region
+    ),
+    hjust  = 0,
+    size   = 7 * 5 / 14 * 0.8,
+    fontface = "bold"
+  ) +
+  scale_fill_manual(values = region_colors_broad) +
+  scale_color_manual(values = region_colors_broad) +
+  scale_alpha_continuous(range = c(1, 0.1), trans = scales::exp_trans(0.8), labels = scales::percent) +
+  scale_x_continuous(
+    labels = scales::percent,
+    breaks = c(0, 0.10, 0.20, 0.30),
+    limits = c(0, 0.30),
+    expand = c(0, 0),
+    position = "top"
+  ) +
+  scale_y_continuous(expand = c(0, 0)) +
+  labs(x = "Battery Minerals GDP Share", y = NULL) +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    axis.text.y = element_blank(),
+    axis.text.x.top = element_text(size = 7, margin = margin(b = -1)),
+    axis.title.x.top = element_text(size = 7),
+    axis.title.x.bottom = element_blank(),
+    axis.text.x.bottom = element_blank(),
+    axis.ticks.x.top = element_line(size = 0.3),
+    axis.ticks.length = unit(0.15, "cm"),
+    plot.margin = margin(0, 0, 0, 0),
+    panel.grid = element_blank()
+  )
+
+
+p2 + inset_element(legend_plot, left = 0.8, bottom = 0.0, right = 1.0, top = 0.2)
+
+# fmt: skip
+ggsave("Figures/Figure3_option2.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 18, height = 18)
+# fmt: skip
+ggsave("Figures/Figure3_option2.svg", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 18, height = 18)
