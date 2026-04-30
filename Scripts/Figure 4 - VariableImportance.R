@@ -191,6 +191,82 @@ p_vi
 ggsave("Figures/Test_FigurePanels/Figure4-lgbm-shap.png", ggplot2::last_plot(), units = "cm", dpi = 600, width = 9, height = 8.7)
 
 # =============================================================================
+# 8b. HORIZONTAL 3-BAR CHART — Low / Mid / High water impact ------------------
+#
+#   Same SHAP data as 8a (shap_df_lgbm), binned into 3 impact levels.
+#   One horizontal bar per level; fill = variable importance (same palette).
+# =============================================================================
+
+shap_3cat <- shap_df_lgbm %>%
+  mutate(
+    impact_level = case_when(
+      water_impact_B < 3000 ~ "<3,000",
+      water_impact_B <= 6000 ~ "3,000-6,000",
+      water_impact_B > 6000 ~ ">6,000"
+    ),
+    impact_level = factor(impact_level, levels = rev(c(">6,000", "3,000-6,000", "<3,000")))
+  )
+
+# Mean |SHAP| per feature per category, normalised to proportion
+shap_3cat_display <- shap_3cat %>%
+  pivot_longer(all_of(lgbm_features), names_to = "feature", values_to = "shap_val") %>%
+  group_by(impact_level, feature) %>%
+  summarise(mean_abs_shap = mean(abs(shap_val), na.rm = TRUE), .groups = "drop") %>%
+  group_by(impact_level) %>%
+  mutate(importance = mean_abs_shap / sum(mean_abs_shap)) %>%
+  ungroup() %>%
+  mutate(
+    feature_plot = if_else(feature %in% top_shap_lgbm, feature, "Other"),
+    display_name = case_when(
+      feature_plot == "epsilon" ~ "Shift (cost increase)",
+      feature_plot == "desal" ~ "Water desalination available",
+      feature_plot == "water_Copper" ~ "Ore copper water cons",
+      feature_plot == "recovery_Copper" ~ "Copper recovery rate",
+      feature_plot == "demand_level" ~ "Mineral demand",
+      feature_plot == "depletion_Copper" ~ "Max production rate copper",
+      feature_plot %in% c("fish", "fish_threshold") ~ "Protect fish basins",
+      feature_plot == "opex_Copper" ~ "Copper extraction costs",
+      feature_plot == "recovery_Lithium" ~ "Lithium recovery rate",
+      TRUE ~ "Other"
+    )
+  ) %>%
+  group_by(impact_level, display_name) %>%
+  summarise(importance = sum(importance), .groups = "drop") %>%
+  group_by(impact_level) %>%
+  mutate(importance = importance / sum(importance)) %>%
+  ungroup() %>%
+  mutate(display_name = factor(display_name, levels = rev(water_display_names)))
+
+# Label midpoints for direct annotation (only segments wide enough to label)
+label_3cat <- shap_3cat_display %>%
+  filter(impact_level == "3,000-6,000") |>
+  arrange(impact_level, desc(display_name)) %>%
+  group_by(impact_level) %>%
+  mutate(xmax = cumsum(importance), xmin = lag(xmax, default = 0), xmid = (xmax + xmin) / 2) %>%
+  ungroup()
+
+p_vi_3cat <- ggplot(shap_3cat_display, aes(x = impact_level, y = importance, fill = display_name)) +
+  geom_col(position = "fill", color = "black", linewidth = 0.15,width=1) +
+  geom_text(
+    data = label_3cat,
+    aes(y = xmid, x = impact_level, label = display_name),
+    hjust = 0.5, vjust = 0.5, size = 1.8, color = "white", fontface = "bold",
+    show.legend = FALSE, lineheight = 0.85
+  ) +
+  # fmt: skip
+  annotate("text", x = Inf, y = Inf, label = "a", hjust = 1.2, vjust = 1.2, fontface = "bold", size = 14 * 5 / 14 * 0.8, colour = "white") +
+  scale_fill_manual(values = water_colors) +
+  scale_y_continuous(labels = label_percent(), name = "Relative importance") +
+  coord_cartesian(expand = FALSE, clip = "off") +
+  labs(title = "Variable importance", x = "") +
+  theme_pb_large() +
+  theme(legend.position = "none")
+
+p_vi_3cat
+# fmt: skip
+ggsave("Figures/Test_FigurePanels/Figure4-lgbm-shap-3cat.png", ggplot2::last_plot(), units = "cm", dpi = 600, width = 9, height = 8.7)
+
+# =============================================================================
 # 9A SINGLE DENSITY PLOTS — Water Impact, 2×2 grid ---------------------------
 # =============================================================================
 
@@ -422,6 +498,7 @@ p_copper
 # fmt: skip
 ggsave("Figures/Test_FigurePanels/Fig4-dens-2x2.png", ggplot2::last_plot(), units = "cm", dpi = 600, width = 18, height = 17.4)
 
+
 # MERGE FIGURE ---------------------
 design <- "
 AAB
@@ -430,6 +507,278 @@ CDE
 (p_vi + p_demand + p_epsilon + p_desal + p_copper) + plot_layout(design = design)
 ggsave("Figures/Figure4.png", ggplot2::last_plot(), units = "cm", dpi = 600, width = 18, height = 17.4)
 ggsave("Figures/Figure4.svg", ggplot2::last_plot(), units = "cm", dpi = 600, width = 18, height = 17.4)
+
+
+## Conditional density figures ---------------------------------------
+# =============================================================================
+# CONDITIONAL DENSITY GRID — 2 (desal) × 3 (epsilon) panels, color = copper
+# =============================================================================
+
+X_LIM_WATER <- c(0, 9e3)
+scaling <- 250
+clipping <- 11500
+
+skimr::skim(data_full$water_impact_B)
+
+table(data_full$epsilon)
+range(data_full$recovery_Copper)
+range(data_full$water_Copper)
+data_grid <- data_full |>
+  mutate(
+    cat_desal = case_when(desal == 1 ~ "Desalination", TRUE ~ "No Desalination"),
+    cat_epsilon = case_when(
+      epsilon == 0.00 ~ "Cost Optimal",
+      epsilon %in% c(0.01, 0.05) ~ "1-5% Cost Increase",
+      epsilon %in% c(0.10, 0.25) ~ "10-25% Cost Increase",
+      TRUE ~ NA_character_
+    ),
+    copper_score = recovery_Copper - water_Copper,
+    cat_copper = case_when(
+      ntile(copper_score, 3) == 3 ~ "High recovery, Low water",
+      ntile(copper_score, 3) == 2 ~ "Mid",
+      ntile(copper_score, 3) == 1 ~ "Low recovery, High water"
+    ),
+    cat_demand = case_when(mineral_demand < 1050 ~ "Low demand", mineral_demand >= 1050 ~ "High demand")
+  ) |>
+  filter(!is.na(cat_epsilon), !is.na(cat_copper)) |>
+  mutate(
+    cat_desal = factor(cat_desal, levels = c("No Desalination", "Desalination")),
+    cat_epsilon = factor(cat_epsilon, levels = c("Cost Optimal", "1-5% Cost Increase", "10-25% Cost Increase")),
+    cat_copper = factor(cat_copper, levels = c("High recovery, Low water", "Mid", "Low recovery, High water")),
+    cat_demand = factor(cat_demand, levels = c("Low demand", "High demand"))
+  )
+nrow(data_grid)
+table(data_grid$cat_copper)
+
+data_dens <- data_grid |>
+  group_by(cat_desal, cat_copper, cat_epsilon, cat_demand) |>
+  group_modify(
+    ~ {
+      d <- density(.x$water_impact_B)
+      data.frame(x = d$x, y = d$y * scaling * nrow(.x))
+    }
+  ) |>
+  filter(x <= clipping) |>
+  ungroup()
+
+lbl_grid <- data_grid |>
+  group_by(cat_desal, cat_copper, cat_epsilon, cat_demand) |>
+  summarise(
+    x = density(water_impact_B)$x[which.max(density(water_impact_B)$y)],
+    y = max(density(water_impact_B)$y) * n() * scaling,
+    .groups = "drop"
+  )
+
+epsilon_colors <- c("Cost Optimal" = "#08306b", "1-5% Cost Increase" = "#045a8d", "10-25% Cost Increase" = "#3690c0")
+
+pct_grid <- data_grid |>
+  group_by(cat_desal, cat_copper, cat_epsilon, cat_demand) |>
+  summarise(pct = mean(water_impact_B < 3000) * 100, .groups = "drop")
+
+p_grid <- ggplot(data_dens, aes(x = x, y = y, color = cat_epsilon)) +
+  geom_line(linewidth = 0.7) +
+  geom_text_repel(
+    data = lbl_grid,
+    aes(x = x, y = y, label = cat_epsilon, color = cat_epsilon),
+    show.legend = FALSE,
+    size = 2.5,
+    nudge_y = 50,
+    seed = 1
+  ) +
+  geom_area(
+  data = data_dens |> filter(x <= 3000),
+  aes(x = x, y = y, fill = cat_epsilon),
+  alpha = 0.15,
+  position = "identity"
+) +
+  scale_fill_manual(values = epsilon_colors, guide = "none") +
+  geom_text(
+  data = pct_grid |> left_join(lbl_grid, by = c("cat_desal", "cat_copper", "cat_epsilon", "cat_demand")),
+  aes(x = x, y = y, label = paste0(round(pct, 1), "%"), color = cat_epsilon),
+  vjust = -0.5,
+  size = 2.5,
+  nudge_y=-40,
+  show.legend = FALSE
+) +
+  scale_color_manual(values = epsilon_colors) +
+  scale_x_continuous(labels = label_comma(), breaks = c(0, 2, 4, 6, 8) * 1e3) +
+  scale_y_continuous(labels = label_comma()) +
+  coord_cartesian(xlim = X_LIM_WATER, expand = FALSE, clip = "off") +
+  facet_grid(rows = vars(cat_desal, cat_demand), cols = vars(cat_copper)) +
+  geom_vline(xintercept = 3000, linetype = "dashed", linewidth = 0.5, color = "grey50") +
+  labs(
+    x = "Water Scarcity Footprint 2025-2050 (billion m³ world-eq)",
+    y = "No. of simulations (n = 10,000)",
+    color = NULL
+  ) +
+  theme_pb_large() +
+  theme(legend.position = "none", strip.text = element_text(size = 9, face = "bold"))
+
+p_grid
+
+ggsave("Figures/Test_FigurePanels/Fig4-dens-grid.png", p_grid, units = "cm", dpi = 600, width = 18, height = 17.4)
+
+
+# =============================================================================
+# 10a. BIVARIATE COST vs WATER IMPACT — Scatter with density regions ----------
+#
+#   X: water_impact_B (billion m³-eq), Y: cost_B (USD billion, total system cost)
+#   5 patchwork panels, one per conditioning variable.
+#   Version A: stat_ellipse at 33% (dashed) and 66% (solid) + median points
+#   Version B: ggdensity::geom_hdr at probs 0.33/0.66 + geom_hdr_points
+# =============================================================================
+
+library(ggdensity)
+
+X_LIM_BI <- c(0, 9500)
+Y_LIM_BI <- c(2000, 9000)
+
+style_bivariate <- list(
+  scale_x_continuous(labels = label_comma(), breaks = c(0, 3, 6, 9) * 1e3),
+  scale_y_continuous(labels = label_comma(), breaks = c(3, 6, 9) * 1e3),
+  coord_cartesian(xlim = X_LIM_BI, ylim = Y_LIM_BI, expand = FALSE, clip = "off"),
+  labs(
+    x = "Water Scarcity Footprint 2025-2025 (billion m³-eq)",
+    y = "Cost 2025-2050 (USD billion)",
+    color = NULL,
+    fill = NULL
+  ),
+  theme_pb_large(),
+  theme(legend.position = "none", plot.title = element_text(size = 9, face = "bold", colour = "#222222", hjust = 0.5))
+)
+
+## --- Panel data preparation --------------------------------------------------
+
+quantile(data_full$mineral_demand, probs = c(0.05, 0.333, 0.5, 0.666, 0.95))
+quantile(data_full$mineral_demand, probs = c(0.25, 0.5, 0.75))
+data_bi1 <- data_full |>
+  mutate(cat = case_when(mineral_demand < 1000 ~ "Demand\n<1,000 Mt", mineral_demand >= 1100 ~ "Demand\n>1,100 Mt")) |>
+  drop_na(cat, water_impact_B, cost_B)
+
+data_bi2 <- data_full |>
+  filter(epsilon %in% c(0, 0.05, 0.25)) |>
+  mutate(
+    cat = case_when(epsilon == 0 ~ "Cost\nOptimal", epsilon == 0.05 ~ "+5% Cost\nIncrease", epsilon == 0.25 ~ "+25%")
+  ) |>
+  drop_na(cat, water_impact_B, cost_B)
+
+data_bi3 <- data_full |>
+  mutate(cat = if_else(desal == 1, "Desalination", "No Desal.")) |>
+  drop_na(cat, water_impact_B, cost_B)
+
+# Same joint split as Panel 4 in section 9a
+data_bi4 <- data_full |>
+  mutate(
+    cat = case_when(
+      recovery_Copper > 0.85 & water_Copper < 0.25 ~ "High recovery,\nLow water",
+      recovery_Copper < 0.70 & water_Copper > 0.75 ~ "Low recovery,\nHigh water",
+      TRUE ~ NA_character_
+    )
+  ) |>
+  drop_na(cat, water_impact_B, cost_B)
+
+# Best/Worst combined — print n; warn in comment if < 200 expected
+data_bi5 <- data_full |>
+  mutate(
+    cat = case_when(
+      epsilon == 0.10 &
+        desal == 1 &
+        # mineral_demand < 1000 &
+        recovery_Copper > 0.85 &
+        water_Copper < 0.25 ~ "+10% Cost\nCu ↑Recov. ↓Water\nDesalination",
+      epsilon == 0 &
+        desal == 0 &
+        # mineral_demand >= 1100 &
+        recovery_Copper < 0.70 &
+        water_Copper > 0.75 ~ "Cost optimal\nCu ↓Recov. ↑Water\nNo desal.",
+      TRUE ~ NA_character_
+    )
+  ) |>
+  drop_na(cat, water_impact_B, cost_B)
+
+n_best <- sum(data_bi5$cat == "+10% Cost\nCu ↑Recov. ↓Water\nDesalination")
+n_worst <- sum(data_bi5$cat == "Cost optimal\nCu ↓Recov. ↑Water\nNo desal.")
+cat(sprintf("Panel k — Best case n = %d | Worst case n = %d\n", n_best, n_worst))
+# WARNING: joint filter may yield <200 obs; ellipses/HDRs may be unreliable if so
+
+## --- Color palettes (consistent with section 9a) ----------------------------
+
+colors_bi1 <- c("Demand\n<1,000 Mt" = "#6a51a3", "Demand\n>1,100 Mt" = "#3f007d")
+colors_bi2 <- c("Cost\nOptimal" = "#08306b", "+5% Cost\nIncrease" = "#3690c0", "+25%" = "#74c6e8")
+colors_bi3 <- c("Desalination" = "#1B7A8A", "No Desal." = "#041310")
+colors_bi4 <- c("High recovery,\nLow water" = "#7f2704", "Low recovery,\nHigh water" = "#f16913")
+colors_bi5 <- c(
+  "+10% Cost\nCu ↑Recov. ↓Water\nDesalination" = "#1A7837",
+  "Cost optimal\nCu ↓Recov. ↑Water\nNo desal." = "#B2182B"
+)
+
+## --- Median points per panel -------------------------------------------------
+
+compute_bi_medians <- function(df) {
+  df |>
+    group_by(cat) |>
+    summarise(x = median(water_impact_B, na.rm = TRUE), y = median(cost_B, na.rm = TRUE), .groups = "drop")
+}
+
+med_bi1 <- compute_bi_medians(data_bi1)
+med_bi2 <- compute_bi_medians(data_bi2)
+med_bi3 <- compute_bi_medians(data_bi3)
+med_bi4 <- compute_bi_medians(data_bi4)
+med_bi5 <- compute_bi_medians(data_bi5)
+
+## --- ggdensity HDR — darker core (33%), lighter outer ring (66%) --
+
+make_hdr_panel <- function(data, medians, colors, title, letter, text_labels = NULL) {
+  p <- ggplot(data, aes(x = water_impact_B, y = cost_B, color = cat, fill = cat)) +
+    geom_hdr(probs = 0.66, alpha = 0.15) +
+    geom_hdr(probs = 0.33, alpha = 0.40) +
+    geom_point(data = medians, aes(x = x, y = y), size = 3, shape = 16) +
+    # fmt: skip
+    annotate("text", x = Inf, y = Inf, label = letter, hjust = 1.2, vjust = 1.2, fontface = "bold", size = 14 * 5 / 14 * 0.8, colour = "black") +
+    scale_color_manual(values = colors) +
+    scale_fill_manual(values = colors) +
+    labs(title = title) +
+    style_bivariate
+
+  if (!is.null(text_labels)) {
+    p <- p +
+      geom_text(
+      data = text_labels,
+      aes(x = x, y = y, label = label, color = label),
+      inherit.aes = F,
+      show.legend = FALSE, size = 2.8, fontface = "bold"
+    )
+  }
+  p
+}
+
+text_1 <- tibble(x = c(6.5, 1.5) * 1e3, y = c(3, 8.5) * 1e3, label = names(colors_bi1))
+text_2 <- tibble(x = c(8.1, 5.8, 1.5) * 1e3, y = c(5.5, 6.8, 7) * 1e3, label = names(colors_bi2))
+text_3 <- tibble(x = c(6.5, 1.5) * 1e3, y = c(2.8, 8) * 1e3, label = names(colors_bi3))
+text_4 <- tibble(x = c(6, 2.2) * 1e3, y = c(2.5, 8.6) * 1e3, label = names(colors_bi4))
+text_5 <- tibble(x = c(5, 3.1) * 1e3, y = c(3, 8.4) * 1e3, label = names(colors_bi5))
+
+
+p_hdr_b <- make_hdr_panel(data_bi1, med_bi1, colors_bi1, "Avoid demand", "b", text_1) +
+  # fmt: skip
+  annotate("text", x = 4.9e3, y = 6e3, label = "Median",size = 3, hjust = 0.5, fontface = "bold",color = "#3f007d", alpha = 1) +
+  # fmt: skip
+  annotate("text", x = 4.6e3, y = 7.0e3, label = "33%",size = 3, hjust = 0.5, fontface = "bold",color = "#3f007d", alpha = 0.75) +
+  # fmt: skip
+  annotate("text", x = 4.6e3, y = 8.6e3, label = "66%",size = 3, hjust = 0.5, fontface = "bold",color = "#3f007d", alpha = 0.5)
+p_hdr_c <- make_hdr_panel(data_bi2, med_bi2, colors_bi2, "Shift to low\nwater impact basins", "c", text_2) +
+  labs(x = "")
+p_hdr_d <- make_hdr_panel(data_bi3, med_bi3, colors_bi3, "Improve desalination", "d", text_3) + labs(x = "")
+p_hdr_e <- make_hdr_panel(data_bi4, med_bi4, colors_bi4, "Improve copper\nmining process", "e", text_4)
+p_hdr_f <- make_hdr_panel(data_bi5, med_bi5, colors_bi5, "Joint conditions", "f", text_5) + labs(x = "")
+
+p_hdr_b
+# fmt: skip
+ggsave("test.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 6, height = 17/2)
+
+(p_vi_3cat | p_hdr_b | p_hdr_c) / (p_hdr_d | p_hdr_e | p_hdr_f)
+# fmt: skip
+ggsave("Figures/Test_FigurePanels/Fig4-bivariate-hdr.png", ggplot2::last_plot(), units = "cm", dpi = 600, width = 18, height = 17)
 
 
 # =============================================================================
