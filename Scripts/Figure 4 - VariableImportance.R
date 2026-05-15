@@ -112,7 +112,7 @@ top_shap_lgbm <- shap_bins_lgbm %>%
 top_shap_lgbm
 
 water_display_names <- c(
-  "Shift (cost increase)",
+  "Relocate extraction",
   "Water desalination available",
   "Ore copper water cons",
   "Copper recovery rate",
@@ -125,7 +125,7 @@ water_display_names <- c(
 )
 
 water_colors <- c(
-  "Shift (cost increase)" = "#2166AC", # dark blue   - economic policy
+  "Relocate extraction" = "#2166AC", # dark blue   - economic policy
   "Water desalination available" = "#1B7A8A", # dark teal   - water technology
   "Ore copper water cons" = "#8C4E03", # dark brown  - ore/earth
   "Copper recovery rate" = "#D95F02", # dark orange - copper tech
@@ -141,7 +141,7 @@ plot_data_water <- shap_bins_lgbm %>%
   mutate(
     feature_plot = if_else(feature %in% top_shap_lgbm, feature, "Other"),
     display_name = case_when(
-      feature_plot == "epsilon" ~ "Shift (cost increase)",
+      feature_plot == "epsilon" ~ "Relocate extraction",
       feature_plot == "desal" ~ "Water desalination available",
       feature_plot == "water_Copper" ~ "Ore copper water cons",
       feature_plot == "recovery_Copper" ~ "Copper recovery rate",
@@ -180,10 +180,10 @@ p_vi <- ggplot(plot_data_water, aes(x = bin_center, y = importance / 100, fill =
   # fmt: skip
   annotate("text",x = Inf, y = Inf,label = "a",hjust = 1.2, vjust = 1.2,fontface = "bold",size = 14 * 5 / 14 * 0.8,colour = "white") +
   scale_fill_manual(values = water_colors) +
-  scale_x_continuous(labels = label_comma(), breaks = c(0, 2, 4, 6, 8) * 1e3) +
+  scale_x_continuous(labels = ~ scales::comma(. / 1e3), breaks = c(0, 2, 4, 6, 8) * 1e3) +
   scale_y_continuous(labels = label_percent(), name = "Relative importance") +
   coord_cartesian(expand = FALSE, clip = "off") +
-  labs(title = "Variable importance on water footprint ", x = "Water Scarcity Footprint 2025-2050 (billion m³-eq)") +
+  labs(title = "Variable importance on water footprint ", x = "Scarce Water Use 2025-2050 (trillion m³-eq)") +
   theme_pb_large() +
   theme(legend.position = "none", plot.title = element_text(size = 10, face = "bold", colour = "#222222", hjust = 0.5))
 p_vi
@@ -200,11 +200,11 @@ ggsave("Figures/Test_FigurePanels/Figure4-lgbm-shap.png", ggplot2::last_plot(), 
 shap_3cat <- shap_df_lgbm %>%
   mutate(
     impact_level = case_when(
-      water_impact_B < 3000 ~ "<3,000",
-      water_impact_B <= 6000 ~ "3,000-6,000",
-      water_impact_B > 6000 ~ ">6,000"
+      water_impact_B < 3000 ~ "<3",
+      water_impact_B <= 6000 ~ "3-6",
+      water_impact_B > 6000 ~ ">6"
     ),
-    impact_level = factor(impact_level, levels = rev(c(">6,000", "3,000-6,000", "<3,000")))
+    impact_level = factor(impact_level, levels = rev(c(">6", "3-6", "<3")))
   )
 
 # Mean |SHAP| per feature per category, normalised to proportion
@@ -218,7 +218,7 @@ shap_3cat_display <- shap_3cat %>%
   mutate(
     feature_plot = if_else(feature %in% top_shap_lgbm, feature, "Other"),
     display_name = case_when(
-      feature_plot == "epsilon" ~ "Shift (cost increase)",
+      feature_plot == "epsilon" ~ "Relocate extraction",
       feature_plot == "desal" ~ "Water desalination available",
       feature_plot == "water_Copper" ~ "Ore copper water cons",
       feature_plot == "recovery_Copper" ~ "Copper recovery rate",
@@ -239,7 +239,7 @@ shap_3cat_display <- shap_3cat %>%
 
 # Label midpoints for direct annotation (only segments wide enough to label)
 label_3cat <- shap_3cat_display %>%
-  filter(impact_level == "3,000-6,000") |>
+  filter(impact_level == "3-6") |>
   arrange(impact_level, desc(display_name)) %>%
   group_by(impact_level) %>%
   mutate(xmax = cumsum(importance), xmin = lag(xmax, default = 0), xmid = (xmax + xmin) / 2) %>%
@@ -250,7 +250,7 @@ p_vi_3cat <- ggplot(shap_3cat_display, aes(x = impact_level, y = importance, fil
   geom_text(
     data = label_3cat,
     aes(y = xmid, x = impact_level, label = display_name),
-    hjust = 0.5, vjust = 0.5, size = 1.8, color = "white", fontface = "bold",
+    hjust = 0.5, vjust = 0.5, size = 2, color = "white", fontface = "bold",
     show.legend = FALSE, lineheight = 0.85
   ) +
   # fmt: skip
@@ -258,9 +258,9 @@ p_vi_3cat <- ggplot(shap_3cat_display, aes(x = impact_level, y = importance, fil
   scale_fill_manual(values = water_colors) +
   scale_y_continuous(labels = label_percent(), name = "Relative importance") +
   coord_cartesian(expand = FALSE, clip = "off") +
-  labs(title = "Variable importance", x = "") +
+  labs(title = "Variable importance", x = expression("Scarce Water Use (trillion " ~ m^3 * "-eq)")) +
   theme_pb_large() +
-  theme(legend.position = "none")
+  theme(legend.position = "none", plot.title = element_text(size = 9, face = "bold", colour = "#222222", hjust = 0.5))
 
 p_vi_3cat
 # fmt: skip
@@ -282,7 +282,7 @@ clipping <- 11500 # clips extended line range
 
 # Shared style layers applied to every panel
 style_water <- list(
-  scale_x_continuous(labels = label_comma(), breaks = c(0, 2, 4, 6, 8) * 1e3),
+  scale_x_continuous(labels = ~ scales::comma(. / 1e3), breaks = c(0, 2, 4, 6, 8) * 1e3),
   scale_y_continuous(labels = label_comma()),
   coord_cartesian(xlim = X_LIM_WATER, expand = FALSE, clip = "off"),
   labs(y = "No. of simulations (n = 10,000)", fill = NULL, color = NULL),
@@ -343,7 +343,7 @@ p_demand <- ggplot(data_p1, aes(x = x, y = y, color = cat)) +
   # fmt: skip
   annotate("text",x = Inf, y = Inf,label = "b",hjust = 1.2, vjust = 1.2,fontface = "bold",size = 14 * 5 / 14 * 0.8,colour = "black") +
   scale_color_manual(values = colors_cut1) +
-  labs(title = "Avoid - Demand", x = "Water Footprint") +
+  labs(title = "Avoid - Demand", x = "Scarce Water Use") +
   style_water
 p_demand
 
@@ -395,7 +395,7 @@ p_epsilon <- ggplot(data_p2, aes(x = x, y = y, color = cat)) +
   # fmt: skip
   annotate("text",x = Inf, y = Inf,label = "c",hjust = 1.2, vjust = 1.2,fontface = "bold",size = 14 * 5 / 14 * 0.8,colour = "black") +
   scale_color_manual(values = colors_cut) +
-  labs(title = "Shift - Increase cost\nto reduce water impact", x = "") +
+  labs(title = "Relocate - Increase cost\nto reduce water impact", x = "") +
   style_water
 p_epsilon
 
@@ -438,7 +438,7 @@ p_desal <- ggplot(data_p3, aes(x = x, y = y, color = cat)) +
   # fmt: skip
   annotate("text",x = Inf, y = Inf,label = "d",hjust = 1.2, vjust = 1.2,fontface = "bold",size = 14 * 5 / 14 * 0.8,colour = "black") +
   scale_color_manual(values = colors_cut) +
-  labs(title = "Improve - Desalination", x = "Water Scarcity Footprint 2025-2050 (billion m³ world-eq)") +
+  labs(title = "Desalination", x = "Scarce Water Use 2025-2050 (trillion m³ world-eq)") +
   style_water
 p_desal
 
@@ -606,11 +606,7 @@ p_grid <- ggplot(data_dens, aes(x = x, y = y, color = cat_epsilon)) +
   coord_cartesian(xlim = X_LIM_WATER, expand = FALSE, clip = "off") +
   facet_grid(rows = vars(cat_desal, cat_demand), cols = vars(cat_copper)) +
   geom_vline(xintercept = 3000, linetype = "dashed", linewidth = 0.5, color = "grey50") +
-  labs(
-    x = "Water Scarcity Footprint 2025-2050 (billion m³ world-eq)",
-    y = "No. of simulations (n = 10,000)",
-    color = NULL
-  ) +
+  labs(x = "Scarce Water Use 2025-2050 (billion m³ world-eq)", y = "No. of simulations (n = 10,000)", color = NULL) +
   theme_pb_large() +
   theme(legend.position = "none", strip.text = element_text(size = 9, face = "bold"))
 
@@ -634,12 +630,12 @@ X_LIM_BI <- c(0, 9500)
 Y_LIM_BI <- c(2000, 9000)
 
 style_bivariate <- list(
-  scale_x_continuous(labels = label_comma(), breaks = c(0, 3, 6, 9) * 1e3),
-  scale_y_continuous(labels = label_comma(), breaks = c(3, 6, 9) * 1e3),
+  scale_x_continuous(labels = ~ scales::comma(. / 1e3), breaks = c(0, 3, 6, 9) * 1e3),
+  scale_y_continuous(labels = ~ scales::comma(. / 1e3), breaks = c(3, 6, 9) * 1e3),
   coord_cartesian(xlim = X_LIM_BI, ylim = Y_LIM_BI, expand = FALSE, clip = "off"),
   labs(
-    x = "Water Scarcity Footprint 2025-2025 (billion m³-eq)",
-    y = "Cost 2025-2050 (USD billion)",
+    x = expression("Scarce Water Use (trillion " ~ m^3 * "-eq)"),
+    y = "Cost 2025-2050 (USD trillion)",
     color = NULL,
     fill = NULL
   ),
@@ -765,12 +761,11 @@ p_hdr_b <- make_hdr_panel(data_bi1, med_bi1, colors_bi1, "Avoid demand", "b", te
   # fmt: skip
   annotate("text", x = 4.6e3, y = 7.0e3, label = "33%",size = 3, hjust = 0.5, fontface = "bold",color = "#3f007d", alpha = 0.75) +
   # fmt: skip
-  annotate("text", x = 4.6e3, y = 8.6e3, label = "66%",size = 3, hjust = 0.5, fontface = "bold",color = "#3f007d", alpha = 0.5)
-p_hdr_c <- make_hdr_panel(data_bi2, med_bi2, colors_bi2, "Shift to low\nwater impact basins", "c", text_2) +
-  labs(x = "")
-p_hdr_d <- make_hdr_panel(data_bi3, med_bi3, colors_bi3, "Improve desalination", "d", text_3) + labs(x = "")
+  annotate("text", x = 4.6e3, y = 8.7e3, label = "66%",size = 3, hjust = 0.5, fontface = "bold",color = "#3f007d", alpha = 0.5)
+p_hdr_c <- make_hdr_panel(data_bi2, med_bi2, colors_bi2, "Relocate to low\nwater impact basins", "c", text_2)
+p_hdr_d <- make_hdr_panel(data_bi3, med_bi3, colors_bi3, "Desalination", "d", text_3)
 p_hdr_e <- make_hdr_panel(data_bi4, med_bi4, colors_bi4, "Improve copper\nmining process", "e", text_4)
-p_hdr_f <- make_hdr_panel(data_bi5, med_bi5, colors_bi5, "Joint conditions", "f", text_5) + labs(x = "")
+p_hdr_f <- make_hdr_panel(data_bi5, med_bi5, colors_bi5, "Joint conditions", "f", text_5)
 
 p_hdr_b
 # fmt: skip
@@ -778,7 +773,8 @@ ggsave("test.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 6, hei
 
 (p_vi_3cat | p_hdr_b | p_hdr_c) / (p_hdr_d | p_hdr_e | p_hdr_f)
 # fmt: skip
-ggsave("Figures/Test_FigurePanels/Fig4-bivariate-hdr.png", ggplot2::last_plot(), units = "cm", dpi = 600, width = 18, height = 17)
+ggsave("Figures/Figure4.png", ggplot2::last_plot(), units = "cm", dpi = 600, width = 18, height = 17)
+ggsave("Figures/Figure4.svg", ggplot2::last_plot(), units = "cm", dpi = 600, width = 18, height = 17)
 
 
 # =============================================================================
@@ -1053,7 +1049,7 @@ p_co_fish <- ggplot(data_co2, aes(x = slack_cobalt_pct, color = cat)) +
   # fmt: skip
   annotate("text",x = Inf, y = Inf,label = "c",hjust = 1.2, vjust = 1.2,fontface = "bold",size = 14 * 5 / 14 * 0.8,colour = "black") +
   scale_color_manual(values = colors_cut) +
-  labs(title = "Shift - Protect fish basins") +
+  labs(title = "Relocate - Protect fish basins") +
   style_cobalt
 p_co_fish
 
@@ -1083,7 +1079,7 @@ p_desal_co <- ggplot(data_co3, aes(x = slack_cobalt_pct, color = cat)) +
   # fmt: skip
   annotate("text",x = Inf, y = Inf,label = "d",hjust = 1.2, vjust = 1.2,fontface = "bold",size = 14 * 5 / 14 * 0.8,colour = "black") +
   scale_color_manual(values = colors_cut) +
-  labs(title = "Improve - Desalination") +
+  labs(title = "Desalination") +
   style_cobalt
 p_desal_co
 

@@ -184,7 +184,7 @@ data_decomp_demand <- opt_results_demand |>
       share_NiCoCu /
       1e3,
     costs = costs / (1 + r)^(t - 2025),
-    water = ktons_extracted * water_footprint / 1e6 # billion m3
+    water = ktons_extracted * water_footprint / 1e6 # billion m3-eq
   ) |>
   # Allocate costs at each deposit based on revenue share
   left_join(revShare) |>
