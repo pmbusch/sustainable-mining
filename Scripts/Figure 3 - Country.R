@@ -394,13 +394,7 @@ ggplot(data_fig, aes(x = delta_water, y = delta_profit)) +
   scale_size_continuous(range = c(0.1, 8), breaks = c(0.01, 0.05, 0.1, 0.2), labels = scales::percent) +
   scale_fill_manual(values = region_colors_broad, na.value = "#808080") +
   scale_color_manual(values = region_colors_broad, na.value = "#808080", guide = "none") +
-  labs(
-    x = "",
-    y = "",
-    size = "Battery Minerals\nGDP share",
-    fill = "Region",
-    title = "Country-level changes in profit and water scarcity footprint relative to cost-optimal baseline"
-  ) +
+  labs(x = "", y = "", size = "Battery Minerals\nGDP share", fill = "Region") +
   coord_cartesian(clip = "off") +
   theme_pb_large() +
   guides(fill = "none", color = "none", size = guide_legend()) +
@@ -523,13 +517,7 @@ p2 <- ggplot(data_fig, aes(x = delta_water, y = delta_profit)) +
   scale_fill_manual(values = region_colors_broad, na.value = "#808080") +
   scale_alpha_continuous(range = c(1, 0.1), labels = scales::percent, trans = scales::exp_trans(0.8)) +
   scale_color_manual(values = region_colors_broad, na.value = "#808080", guide = "none") +
-  labs(
-    x = "",
-    y = "",
-    size = "Battery Minerals\nGDP share",
-    fill = "Region",
-    title = "Country-level changes in profit and water scarcity footprint relative to cost-optimal baseline"
-  ) +
+  labs(x = "", y = "", size = "Battery Minerals\nGDP share", fill = "Region") +
   coord_cartesian(clip = "off") +
   theme_pb_large() +
   guides(color = "none", alpha = guide_legend()) +

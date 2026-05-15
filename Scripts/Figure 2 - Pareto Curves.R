@@ -312,12 +312,12 @@ p_a <- ggplot(data_fig_a, aes(Water_Impact, Cost, col = Scenario)) +
   # fmt: skip
   annotate("text", x = 1800, y = 5350, label = "Less cost", col="#999999",size = label_text * 5 / 14 * 0.8, vjust = 0,angle=90) +
   labs(
-    x = expression("Water Scarcity Footprint 2025-2050 (billion " ~ m^3 * "-eq)"),
-    y = "Cost 2025-2050 (billion USD)",
+    x = expression("Water Scarcity Footprint 2025-2050 (trillion " ~ m^3 * "-eq)"),
+    y = "Cost 2025-2050 (trillion USD)",
     col = ""
   ) +
   scale_y_continuous(
-    labels = dollar_format(big.mark = ",", prefix = "$"),
+    labels = ~ paste0("$", scales::comma(. / 1e3)),
     sec.axis = sec_axis(
       ~ (. - df_opt_a$Cost) / df_opt_a$Cost,
       name = "Change in Cost relative to Optimal Cost NZE (%)",
@@ -325,7 +325,7 @@ p_a <- ggplot(data_fig_a, aes(Water_Impact, Cost, col = Scenario)) +
     )
   ) +
   scale_x_continuous(
-    labels = scales::label_comma(),
+    labels = ~ scales::comma(. / 1e3),
     sec.axis = sec_axis(
       ~ (. - df_opt_a$Water_Impact) / df_opt_a$Water_Impact,
       name = "Change in Water Scarcity Footprint relative to Optimal Cost NZE (%)",
@@ -748,12 +748,12 @@ p_b <- ggplot(data_fig_b, aes(Water_Impact, Cost, col = Scenario, group = Scenar
   # fmt: skip
   annotate("text",x = df_opt_b$Water_Impact + 300,y = df_opt_b$Cost - 100,label = "Optimal Cost",col = "#999999",size = label_text * 5 / 14 * 0.8,hjust = 0.1) +
   labs(
-    x = expression("Water Scarcity Footprint 2025-2050 (billion " ~ m^3 * "-eq)"),
-    y = "Cost 2025-2050 (billion USD)",
+    x = expression("Water Scarcity Footprint 2025-2050 (trillion " ~ m^3 * "-eq)"),
+    y = "Cost 2025-2050 (trillion USD)",
     col = ""
   ) +
   scale_y_continuous(
-    labels = dollar_format(big.mark = ",", prefix = "$"),
+    labels = ~ paste0("$", scales::comma(. / 1e3)),
     sec.axis = sec_axis(
       ~ (. - df_opt_b$Cost) / df_opt_b$Cost,
       name = "Change in Cost relative to Optimal Cost All Basins (%)",
@@ -761,7 +761,7 @@ p_b <- ggplot(data_fig_b, aes(Water_Impact, Cost, col = Scenario, group = Scenar
     )
   ) +
   scale_x_continuous(
-    labels = scales::label_comma(),
+    labels = ~ scales::comma(. / 1e3),
     sec.axis = sec_axis(
       ~ (. - df_opt_b$Water_Impact) / df_opt_b$Water_Impact,
       name = "Change in Water Scarcity Footprint relative to Optimal Cost All Basins (%)",
