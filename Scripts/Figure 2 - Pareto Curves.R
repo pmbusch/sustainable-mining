@@ -123,7 +123,7 @@ df_demand <- df_demand |>
   mutate(
     scen_name = case_when(
       Scenario == "APS" ~ "Announced Pledges\nScenario",
-      Scenario == "NZE" ~ "Net Zero Emissions\nDemand Scenario",
+      Scenario == "NZE" ~ "Net Zero Emissions\n(NZE)",
       Scenario == "SPS" ~ "Stated Policies\nScenario",
       TRUE ~ Scenario
     )
@@ -279,7 +279,7 @@ p_a <- ggplot(data_fig_a, aes(Water_Impact, Cost, col = Scenario)) +
   geom_point(data = df_close_a, col = "#0072B2", size = 1) +
   # fmt: skip
   annotate("text",x = df_close_a$Water_Impact[2] + 100,y = df_close_a$Cost[2] + 20,
-    label = paste0("'Desalination: $' * ", desalination_cost, " * ' per m'^3"),
+    label = paste0("'$' * ", desalination_cost, " * ' per m'^3"),
     color = "#0072B2",size = label_text * 5 / 14 * 0.8,parse = TRUE,hjust = 0) +
   geom_segment(
     data = df_close_a2,
@@ -296,7 +296,7 @@ p_a <- ggplot(data_fig_a, aes(Water_Impact, Cost, col = Scenario)) +
   geom_point(data = df_close_a2, col = "#023858", size = 1) +
   # fmt: skip
   annotate("text",x = df_close_a2$Water_Impact[2] + 100,y = df_close_a2$Cost[2] + 20,
-    label = paste0("'Desalination: $' * ", desalination_cost2, " * ' per m'^3"),
+    label = paste0("'$' * ", desalination_cost2, " * ' per m'^3"),
     color = "#023858",size = label_text * 5 / 14 * 0.8,parse = TRUE,hjust = 0) +
   # fmt: skip
   annotate("text",x = df_opt_a$Water_Impact + 100,y = df_opt_a$Cost - 60,
@@ -312,7 +312,7 @@ p_a <- ggplot(data_fig_a, aes(Water_Impact, Cost, col = Scenario)) +
   # fmt: skip
   annotate("text", x = 1800, y = 5350, label = "Less cost", col="#999999",size = label_text * 5 / 14 * 0.8, vjust = 0,angle=90) +
   labs(
-    x = expression("Water Scarcity Footprint 2025-2050 (trillion " ~ m^3 * "-eq)"),
+    x = expression("Scarce Water Use 2025-2050 (trillion " ~ m^3 * "-eq)"),
     y = "Cost 2025-2050 (trillion USD)",
     col = ""
   ) +
@@ -328,11 +328,11 @@ p_a <- ggplot(data_fig_a, aes(Water_Impact, Cost, col = Scenario)) +
     labels = ~ scales::comma(. / 1e3),
     sec.axis = sec_axis(
       ~ (. - df_opt_a$Water_Impact) / df_opt_a$Water_Impact,
-      name = "Change in Water Scarcity Footprint relative to Optimal Cost NZE (%)",
+      name = "Change in Scarce Water Use relative to Optimal Cost NZE (%)",
       labels = scales::percent
     )
   ) +
-  scale_color_manual(values = demand_colors) +
+  scale_color_manual(values = c("NZE" = "#C44E00", "APS" = "#5E8A00", "SPS" = "#1A6FA4")) +
   guides(color = "none") +
   coord_cartesian(
     xlim = c(min(data_fig_a$Water_Impact) * 0.95, max(data_fig_a$Water_Impact) * 1.05),
@@ -343,12 +343,12 @@ p_a <- ggplot(data_fig_a, aes(Water_Impact, Cost, col = Scenario)) +
   theme(
     legend.position = "bottom",
     plot.title = element_text(size = 10, face = "bold", colour = "#222222", hjust = 0.5),
-    axis.title.y.right = element_text(size = 7, colour = "#737373"),
-    axis.text.y.right = element_text(size = 7, colour = "#737373"),
-    axis.title.x.top = element_text(size = 7, colour = "#737373"),
-    axis.text.x.top = element_text(size = 7, colour = "#737373"),
-    axis.ticks.y.right = element_line(color = "#737373"),
-    axis.ticks.x.top = element_line(color = "#737373"),
+    axis.title.y.right = element_text(size = 7, colour = "#AAAAAA"),
+    axis.text.y.right = element_text(size = 7, colour = "#AAAAAA"),
+    axis.title.x.top = element_text(size = 7, colour = "#AAAAAA"),
+    axis.text.x.top = element_text(size = 7, colour = "#AAAAAA"),
+    axis.ticks.y.right = element_line(color = "#AAAAAA"),
+    axis.ticks.x.top = element_line(color = "#AAAAAA"),
   )
 p_a
 
@@ -389,7 +389,7 @@ p_c <- ggplot(data_fig_c, aes(Water, Cost, col = Mineral)) +
     size = label_text * 5 / 14 * 0.8,
     hjust = 0.5
   ) +
-  labs(x = expression("Water Scarcity Footprint (" ~ m^3 * "-eq per ton)"), y = "Cost (USD per ton)", col = "") +
+  labs(x = expression("Scarce Water Use (" ~ m^3 * "-eq per ton)"), y = "Cost (USD per ton)", col = "") +
   scale_y_continuous(labels = dollar_format(big.mark = ",", prefix = "$")) +
   scale_x_continuous(labels = scales::label_comma()) +
   scale_color_manual(values = minerals_colors) +
@@ -647,7 +647,7 @@ selected_scens <- c(
 )
 dict_scens <- tibble(
   Scenario = selected_scens,
-  Scenario2 = c("All Basins", "> 99.9", "> 90", "> 70", "Protect Fish-Rich\nBasins > 60")
+  Scenario2 = c("No protection", "Protect > 99.9", "Protect > 90", "Protect > 70", "Protect > 60")
 )
 
 data_fig_b <- df_biod |> filter(Scenario %in% selected_scens) |> left_join(dict_scens) |> mutate(Scenario = Scenario2)
@@ -660,7 +660,7 @@ df_close_b2 <- df_close_b2 |>
   left_join(dict_scens) |>
   mutate(Scenario = Scenario2)
 
-df_opt_b <- data_fig_b |> filter(metric == "0%", Scenario == "All Basins")
+df_opt_b <- data_fig_b |> filter(metric == "0%", Scenario == "No protection")
 
 write.csv(data_fig_b, "Figures/Data_Figures/Fig2b_Biodiversity_points.csv", row.names = FALSE)
 
@@ -705,8 +705,8 @@ p_b <- ggplot(data_fig_b, aes(Water_Impact, Cost, col = Scenario, group = Scenar
     size = label_text * 5 / 14 * 0.8,
     hjust = 0,
     lineheight = 0.8,
-    nudge_y = 100 * c(-1, 2.4, 0, 0.2, -0.2),
-    nudge_x = 1000 * c(-1.3, -1.3, 0.1, 0.1, 0.1)
+    nudge_x = 1000 * c(-1.8, -1.3, -1.3, 0.1, 0.1),
+    nudge_y = 100 * c(-1, 2.2, -1.5, 0.2, -0.2)
   ) +
   geom_segment(
     data = df_close_b,
@@ -723,7 +723,7 @@ p_b <- ggplot(data_fig_b, aes(Water_Impact, Cost, col = Scenario, group = Scenar
   geom_point(data = df_close_b, col = "#0072B2", size = 1) +
   # fmt: skip
   annotate("text",x = df_close_b$Water_Impact[4] + 100,y = df_close_b$Cost[4] + 150,
-    label = paste0("'Desalination: $' * ", desalination_cost, " * ' per m'^3"),
+    label = paste0("'$' * ", desalination_cost, " * ' per m'^3"),
     color = "#0072B2",size = label_text * 5 / 14 * 0.8,parse = TRUE,hjust = 0
   ) +
   geom_segment(
@@ -741,14 +741,14 @@ p_b <- ggplot(data_fig_b, aes(Water_Impact, Cost, col = Scenario, group = Scenar
   geom_point(data = df_close_b2, col = "#023858", size = 1) +
   # fmt: skip
   annotate("text",x = df_close_b2$Water_Impact[4] + 100,y = df_close_b2$Cost[4] + 150,
-    label = paste0("'Desalination: $' * ", desalination_cost2, " * ' per m'^3"),
+    label = paste0("'$' * ", desalination_cost2, " * ' per m'^3"),
     color = "#023858",size = label_text * 5 / 14 * 0.8,parse = TRUE,hjust = 0
   ) +
   geom_point(data = df_opt_a, col = "#999999", size = 0.6) +
   # fmt: skip
   annotate("text",x = df_opt_b$Water_Impact + 300,y = df_opt_b$Cost - 100,label = "Optimal Cost",col = "#999999",size = label_text * 5 / 14 * 0.8,hjust = 0.1) +
   labs(
-    x = expression("Water Scarcity Footprint 2025-2050 (trillion " ~ m^3 * "-eq)"),
+    x = expression("Scarce Water Use 2025-2050 (trillion " ~ m^3 * "-eq)"),
     y = "Cost 2025-2050 (trillion USD)",
     col = ""
   ) +
@@ -764,11 +764,19 @@ p_b <- ggplot(data_fig_b, aes(Water_Impact, Cost, col = Scenario, group = Scenar
     labels = ~ scales::comma(. / 1e3),
     sec.axis = sec_axis(
       ~ (. - df_opt_b$Water_Impact) / df_opt_b$Water_Impact,
-      name = "Change in Water Scarcity Footprint relative to Optimal Cost All Basins (%)",
+      name = "Change in Scarce Water Use relative to Optimal Cost All Basins (%)",
       labels = scales::percent
     )
   ) +
-  scale_color_manual(values = c("#3B4CC0", "#2C7FB8", "#6A00A8", "#9C179E", "#D01C8B")) +
+  scale_color_manual(
+    values = c(
+      "No protection" = "#C44E00",
+      "Protect > 99.9" = "#8AAC2E",
+      "Protect > 90" = "#5E8A1A",
+      "Protect > 70" = "#2E7A25",
+      "Protect > 60" = "#1A4D12"
+    )
+  ) +
   guides(color = "none") +
   # ARROWS
   # fmt: skip
@@ -779,6 +787,8 @@ p_b <- ggplot(data_fig_b, aes(Water_Impact, Cost, col = Scenario, group = Scenar
   annotate("segment",col="#999999", x = 2300, y = 7800, xend = 2300, yend = 7200, arrow = arrow(length = unit(0.1, "cm"))) +
   # fmt: skip
   annotate("text", x = 2600, y = 7500, label = "Less cost", col="#999999",size = label_text * 5 / 14 * 0.8, vjust = 0,angle=90) +
+  # fmt: skip
+  annotate("text", x = 5200, y = 7800, label = "All curves NZE Demand Scenario", col="#C44E00",size = label_text * 5 / 14 * 0.8, hjust = 0) +
   coord_cartesian(
     xlim = c(min(data_fig_b$Water_Impact) * 0.9, max(data_fig_b$Water_Impact) * 1.1),
     ylim = c(min(data_fig_b$Cost) * 0.9, max(data_fig_b$Cost) * 1.1),
@@ -788,12 +798,12 @@ p_b <- ggplot(data_fig_b, aes(Water_Impact, Cost, col = Scenario, group = Scenar
   theme(
     legend.position = "bottom",
     plot.title = element_text(size = 10, face = "bold", colour = "#222222", hjust = 0.5),
-    axis.title.y.right = element_text(size = 7, color = "#737373"),
-    axis.text.y.right = element_text(size = 7, color = "#737373"),
-    axis.title.x.top = element_text(size = 7, color = "#737373"),
-    axis.text.x.top = element_text(size = 7, color = "#737373"),
-    axis.ticks.y.right = element_line(color = "#737373"),
-    axis.ticks.x.top = element_line(color = "#737373")
+    axis.title.y.right = element_text(size = 7, color = "#AAAAAA"),
+    axis.text.y.right = element_text(size = 7, color = "#AAAAAA"),
+    axis.title.x.top = element_text(size = 7, color = "#AAAAAA"),
+    axis.text.x.top = element_text(size = 7, color = "#AAAAAA"),
+    axis.ticks.y.right = element_line(color = "#AAAAAA"),
+    axis.ticks.x.top = element_line(color = "#AAAAAA")
   )
 p_b
 # fmt: skip
@@ -832,7 +842,7 @@ p_d <- ggplot(data_fig_d, aes(Water, Cost, col = Mineral)) +
     size = label_text * 5 / 14 * 0.8,
     hjust = 0.5
   ) +
-  labs(x = expression("Water Scarcity Footprint (" ~ m^3 * "-eq per ton)"), y = "Cost (USD per ton)", col = "") +
+  labs(x = expression("Scarce Water Use (" ~ m^3 * "-eq per ton)"), y = "Cost (USD per ton)", col = "") +
   scale_y_continuous(labels = dollar_format(big.mark = ",", prefix = "$")) +
   scale_x_continuous(labels = scales::label_comma()) +
   scale_color_manual(values = minerals_colors) +
@@ -924,19 +934,125 @@ ggsave("Figures/Test_FigurePanels/Fig2D.png", ggplot2::last_plot(), units = 'cm'
 
 
 # ============================================================
+# MINI PLOTS - Water Mineral Share (below panels a and b)
+# ============================================================
+
+## Panel a - NZE Demand scenario  --------------
+# x limits matching the main panels
+xlim_a <- c(min(data_fig_a$Water_Impact) * 0.95, max(data_fig_a$Water_Impact) * 1.05) / 1e3
+
+# Water mineral share data (NZE scenario); water column scaled to match Water_Impact units
+water_long_nze <- mineral_decomp_demand %>%
+  filter(Scenario == "NZE", !str_detect(metric, "Water")) %>%
+  select(water, copper_water, nickel_water, cobalt_water, lithium_water) %>%
+  rename(Copper = copper_water, Nickel = nickel_water, Cobalt = cobalt_water, Lithium = lithium_water) %>%
+  pivot_longer(cols = c(Copper, Nickel, Cobalt, Lithium), names_to = "Mineral", values_to = "Water_Value") %>%
+  mutate(
+    Pct = (Water_Value / water) * 100,
+    water_scaled = water / 1e3 # billion m³, same as Water_Impact in df_demand
+  ) |>
+  mutate(Mineral = factor(Mineral, levels = rev(c("Copper", "Lithium", "Nickel", "Cobalt")))) |>
+  complete(water_scaled, Mineral, fill = list(Water_Value = 0, Pct = 0))
+
+
+zero_rows <- water_long_nze %>% filter(water_scaled == min(water_scaled)) %>% mutate(water_scaled = 0)
+last_rows <- water_long_nze %>% filter(water_scaled == max(water_scaled)) %>% mutate(water_scaled = 7)
+# Water_Value, Pct, Mineral all preserved — same proportions, just x=0
+water_long_nze <- bind_rows(zero_rows, water_long_nze, last_rows) %>% arrange(water_scaled, Mineral)
+
+
+# Label midpoints at the horizontal centre of each panel's x range
+make_mini_labels <- function(data, xlim) {
+  x_mid <- mean(xlim)
+  xs <- unique(data$water_scaled)
+  closest_x <- xs[which.min(abs(xs - x_mid))]
+  data %>%
+    filter(water_scaled == closest_x) %>%
+    arrange(desc(Mineral)) %>%
+    mutate(cum_pct = cumsum(Pct), mid_pct = cum_pct - Pct / 2, x_label = x_mid) %>%
+    filter(Mineral %in% c("Copper", "Lithium"))
+}
+
+lbl_mini_a <- make_mini_labels(water_long_nze, xlim_a)
+
+make_mini_plot <- function(data, lbl_data, xlim) {
+  ggplot(data, aes(x = water_scaled, y = Pct, fill = Mineral, group = Mineral)) +
+    geom_area(position = "stack", col = "black", linewidth = 0.1) +
+    geom_text(
+      data = lbl_data,
+      aes(x = x_label, y = mid_pct, label = Mineral),
+      inherit.aes = FALSE,
+      size = (label_text) * 5 / 14 * 0.8,
+      hjust = 0.5, vjust = 0.5,
+      color = "white", fontface = "bold"
+    ) +
+    scale_fill_manual(values = minerals_colors) +
+    scale_y_continuous(labels = function(x) paste0(x, "%"), name = "Water share (%)") +
+    scale_x_continuous(labels = ~ scales::comma(.), expand = c(0, 0), position = "top") +
+    coord_cartesian(xlim = xlim, ylim = c(0, 100), expand = FALSE, clip = "on") +
+    theme_pb_large() +
+    theme(
+      legend.position = "none",
+      axis.title.x = element_blank(),
+      axis.ticks.x.top = element_line(linewidth = 0.5),
+      axis.text.x.top = element_text(size = label_text + 1.5),
+      plot.margin = margin(0, 0.1, 0.1, 0.1, "cm"),
+    )
+}
+
+p_mini_a <- make_mini_plot(water_long_nze, lbl_mini_a, xlim_a)
+
+
+## Panel B - >70 fisch rich basins protection --------------
+xlim_b <- c(min(data_fig_b$Water_Impact) * 0.9, max(data_fig_b$Water_Impact) * 1.1) / 1e3
+
+water_long_biod <- mineral_decomp_biod %>%
+  filter(str_detect(Scenario, "70"), !str_detect(metric, "Water")) %>%
+  select(water, copper_water, nickel_water, cobalt_water, lithium_water) %>%
+  rename(Copper = copper_water, Nickel = nickel_water, Cobalt = cobalt_water, Lithium = lithium_water) %>%
+  pivot_longer(cols = c(Copper, Nickel, Cobalt, Lithium), names_to = "Mineral", values_to = "Water_Value") %>%
+  mutate(
+    Pct = (Water_Value / water) * 100,
+    water_scaled = water / 1e3 # billion m³, same as Water_Impact in df_demand
+  ) |>
+  mutate(Mineral = factor(Mineral, levels = rev(c("Copper", "Lithium", "Nickel", "Cobalt")))) |>
+  complete(water_scaled, Mineral, fill = list(Water_Value = 0, Pct = 0))
+
+zero_rows <- water_long_biod %>% filter(water_scaled == min(water_scaled)) %>% mutate(water_scaled = 0)
+# Water_Value, Pct, Mineral all preserved — same proportions, just x=0
+last_rows <- water_long_biod %>% filter(water_scaled == max(water_scaled)) %>% mutate(water_scaled = 10)
+water_long_biod <- bind_rows(zero_rows, water_long_biod, last_rows) %>% arrange(water_scaled, Mineral)
+
+lbl_mini_b <- make_mini_labels(water_long_biod, xlim_b)
+p_mini_b <- make_mini_plot(water_long_biod, lbl_mini_b, xlim_b)
+
+# ============================================================
 # ASSEMBLE FIGURE ---------------------------------------
 # ============================================================
 library(patchwork)
 # fmt: skip
 p_a_fig <- p_a + annotate("text",x = Inf, y = Inf,label = "a",hjust = 1.2, vjust = 1.2,fontface = "bold",size = 14 * 5 / 14 * 0.8,colour = "black")+
-  labs(title="Mineral Demand Levels")
+  labs(title="Mineral Demand Curves") +
+  theme(legend.position = "top", plot.margin = margin(0.1, 0.1, 0, 0.1, "cm"))
 # fmt: skip
 p_b_fig <- p_b + annotate("text",x = Inf, y = Inf,label = "b",hjust = 1.2, vjust = 1.2,fontface = "bold",size = 14 * 5 / 14 * 0.8,colour = "black")+
-  labs(title="Fish-Rich Basin Protection")
+  labs(title="Fish-Rich Basin Protection Curves") +
+  theme(legend.position = "top", plot.margin = margin(0.1, 0.1, 0, 0.1, "cm"))
 
-fig2 <- (p_a_fig | p_b_fig) / (p_c_fig | p_d_fig) + plot_layout(heights = c(9.5, 8.5))
 
-fig2
+# 3-row layout: a/b | mini a/b | c/d  — heights at 70:30 ratio for rows 2+3
+# fig2 <- (p_a_fig | p_b_fig) / (p_mini_a | p_mini_b) / (p_c_fig | p_d_fig) + plot_layout(heights = c(9.5, 2.4, 6.1))
+
+p_mini_a <- p_mini_a + theme(axis.title.y = element_text(hjust = 0))
+p_mini_b <- p_mini_b + theme(axis.title.y = element_text(hjust = 0))
+
+
+col_a <- p_a_fig / p_mini_a / p_c_fig + plot_layout(heights = c(9.5, 2.4, 6.1))
+col_b <- p_b_fig / p_mini_b / p_d_fig + plot_layout(heights = c(9.5, 2.4, 6.1))
+
+fig2 <- col_a | col_b
+
+
 ggsave("Figures/Figure2.png", fig2, units = "cm", dpi = 600, width = 18, height = 18)
 ggsave("Figures/Figure2.svg", fig2, units = "cm", dpi = 600, width = 18, height = 18)
 

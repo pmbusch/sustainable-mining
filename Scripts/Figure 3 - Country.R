@@ -205,7 +205,7 @@ data_fig$Scenario <- recode(
   data_fig$Scenario,
   "5% Cost Increase" = "bold('5% Cost Increase')",
   "Fish Biodiversity < 70" = "bold('+5% Cost + Protect Fish-Rich Basins > 70')",
-  "Water Desalination $0.5/m3" = "bold('+5% Cost + Water Desalination $0.5/m'^3)",
+  "Water Desalination $0.5/m3" = "bold('+5% Cost + Water Desalination at $0.5/m'^3)",
   "Water Desalination $0.5/m3 + Fish Biodiversity < 70" = "bold('+5% Cost + Desal. $0.5/m'^3~'+ Protect Fish > 70')"
 )
 
@@ -214,7 +214,7 @@ data_fig$Scenario <- factor(
   levels = c(
     "bold('5% Cost Increase')",
     "bold('+5% Cost + Protect Fish-Rich Basins > 70')",
-    "bold('+5% Cost + Water Desalination $0.5/m'^3)",
+    "bold('+5% Cost + Water Desalination at $0.5/m'^3)",
     "bold('+5% Cost + Desal. $0.5/m'^3~'+ Protect Fish > 70')"
   )
 )
@@ -289,7 +289,7 @@ dy <- 0.1 # tick half-length (y units)
 scen_levels <- c(
   "bold('5% Cost Increase')",
   "bold('+5% Cost + Protect Fish-Rich Basins > 70')",
-  "bold('+5% Cost + Water Desalination $0.5/m'^3)",
+  "bold('+5% Cost + Water Desalination at $0.5/m'^3)",
   "bold('+5% Cost + Desal. $0.5/m'^3~'+ Protect Fish > 70')"
 )
 data_fig$Scenario <- factor(data_fig$Scenario, levels = scen_levels)
@@ -312,7 +312,7 @@ ggplot(data_fig, aes(x = delta_water, y = delta_profit)) +
   inherit.aes = FALSE
 ) +
   # fmt: skip
-  annotate("text",x = max(abs(xr)),y = 3,label = "Delta~Water~Scarcity~Footprint",parse = T,hjust = 0.7,vjust = 1,size = (text_font+1) * 5 / 14 * 0.8) +
+  annotate("text",x = max(abs(xr)),y = 3,label = "Delta~Scarce~Water~Use",parse = T,hjust = 0.7,vjust = 1,size = (text_font+1) * 5 / 14 * 0.8) +
   # fmt: skip
   annotate("text",x = max(abs(xr)),y = 1.5,label = "(billion~m^3*-eq)",parse = T,hjust = 0.7,vjust = 1,size = (text_font+1) * 5 / 14 * 0.8) +
   geom_hline(yintercept = 0, col = "black", linewidth = 0.2) +
@@ -376,7 +376,7 @@ ggplot(data_fig, aes(x = delta_water, y = delta_profit)) +
   annotate("text", x = -2000, y = -1.5, label = "Less profit", col="#525252",size = text_font * 5 / 14 * 0.8, vjust = 1) +
   # fmt: skip
   geom_text(data = panel_labels, aes(label = label),
-  x = -Inf, y = Inf, hjust = -0.2, vjust = 1.2,
+  x = Inf, y = Inf, hjust = 1.2, vjust = 1.2,
   fontface = "bold", size = 14 * 5 / 14 * 0.8,
   colour = "black", inherit.aes = F) +
   scale_y_continuous(
@@ -435,7 +435,7 @@ p2 <- ggplot(data_fig, aes(x = delta_water, y = delta_profit)) +
   inherit.aes = FALSE
 ) +
   # fmt: skip
-  annotate("text",x = max(abs(xr)),y = 3,label = "Delta~Water~Scarcity~Footprint",parse = T,hjust = 0.7,vjust = 1,size = (text_font+1) * 5 / 14 * 0.8) +
+  annotate("text",x = max(abs(xr)),y = 3,label = "Delta~Scarce~Water~Use",parse = T,hjust = 0.7,vjust = 1,size = (text_font+1) * 5 / 14 * 0.8) +
   # fmt: skip
   annotate("text",x = max(abs(xr)),y = 1.5,label = "(billion~m^3*-eq)",parse = T,hjust = 0.7,vjust = 1,size = (text_font+1) * 5 / 14 * 0.8) +
   geom_hline(yintercept = 0, col = "black", linewidth = 0.2) +
@@ -499,7 +499,7 @@ p2 <- ggplot(data_fig, aes(x = delta_water, y = delta_profit)) +
   annotate("text", x = -2000, y = -1.5, label = "Less profit", col="#525252",size = text_font * 5 / 14 * 0.8, vjust = 1) +
   # fmt: skip
   geom_text(data = panel_labels, aes(label = label),
-  x = -Inf, y = Inf, hjust = -0.2, vjust = 1.2,
+  x = Inf, y = Inf, hjust = 1.2, vjust = 1.2,
   fontface = "bold", size = 14 * 5 / 14 * 0.8,
   colour = "black", inherit.aes = F) +
   scale_y_continuous(
