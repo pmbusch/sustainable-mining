@@ -1,5 +1,5 @@
 # =============================================================================
-# LHS SAMPLING SCRIPT — GLOBAL SENSITIVITY ANALYSIS
+# SAMPLING SCRIPT — GLOBAL SENSITIVITY ANALYSIS
 # Mining Supply Optimisation Model — Water Impact Drivers
 #
 # Purpose:
@@ -8,7 +8,7 @@
 #   model reads one row at a time and reconstructs all inputs internally.
 #
 # Output:
-#   lhs_samples.csv — one row per sample, one column per sampled dimension
+#   samples.csv — one row per sample, one column per sampled dimension
 #
 # Parameter groups:
 #   1. Demand scalars       (3 dims)  — applied to IEA_Demand.csv at runtime

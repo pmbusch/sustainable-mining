@@ -1133,5 +1133,7 @@ AAB
 CDE
 "
 (p_vi_co + p_co_demand + p_co_fish + p_desal_co + p_co_recovery) + plot_layout(design = design)
-ggsave("Figures/Figure4_cobalt.png", ggplot2::last_plot(), units = "cm", dpi = 600, width = 18, height = 17.4)
-ggsave("Figures/Figure4_cobalt.svg", ggplot2::last_plot(), units = "cm", dpi = 600, width = 18, height = 17.4)
+# fmt: skip
+ggsave("Figures/ExtData-Figures/Figure4_cobalt.png", ggplot2::last_plot(), units = "cm", dpi = 600, width = 18, height = 17.4)
+# fmt: skip
+ggsave("Figures/ExtData-Figures/Figure4_cobalt.svg", ggplot2::last_plot(), units = "cm", dpi = 600, width = 18, height = 17.4)
