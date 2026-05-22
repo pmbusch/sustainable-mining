@@ -89,6 +89,53 @@ boxes <- deps |>
 boxes
 
 
+# Co-products --------------
+
+prices <- read.csv("Parameters/MineralPrices.csv")
+price_cu <- prices$price_avg[prices$Mineral == "Copper"]
+price_ni <- prices$price_avg[prices$Mineral == "Nickel"]
+price_co <- prices$price_avg[prices$Mineral == "Cobalt"]
+
+deps_rev <- deposits |>
+  dplyr::mutate(
+    rev_Copper = resources_Copper * grade_resource_Copper * recovery_rate_Copper * price_cu,
+    rev_Nickel = resources_Nickel * grade_resource_Nickel * recovery_rate_Nickel * price_ni,
+    rev_Cobalt = resources_Cobalt * grade_resource_Cobalt * recovery_rate_Cobalt * price_co,
+    tot = rev_Copper + rev_Nickel + rev_Cobalt,
+    s_Copper = rev_Copper / tot,
+    s_Nickel = rev_Nickel / tot,
+    s_Cobalt = rev_Cobalt / tot
+  )
+
+classify <- function(df, thr) {
+  df |>
+    dplyr::rowwise() |>
+    dplyr::mutate(
+      deposit_class = if (grade_resource_Lithium > 0) {
+        "Lithium-only"
+      } else {
+        sh <- c(Copper = s_Copper, Nickel = s_Nickel, Cobalt = s_Cobalt)
+        over <- names(sh)[sh > thr]
+        if (length(over) >= 2) paste(sort(over), collapse = "-") else paste0(names(which.max(sh)), "-only")
+      }
+    ) |>
+    dplyr::ungroup() |>
+    dplyr::count(deposit_class, name = "n") |>
+    dplyr::mutate(threshold = thr)
+}
+
+summary_tbl <- purrr::map_dfr(c(0.10, 0.20, 0.30, 0.40), \(thr) classify(deps_rev, thr))
+# wide format (one column per threshold) — easier to compare
+summary_wide <- tidyr::pivot_wider(
+  summary_tbl,
+  names_from = threshold,
+  values_from = n,
+  names_prefix = "thr_",
+  values_fill = 0
+)
+summary_wide |> arrange(desc(thr_0.2)) |> print()
+# not worth showing co-products..., too few by revenue share..
+
 # FIGURE ------------
 
 # limit stress to 100%
@@ -275,8 +322,8 @@ ggsave("Figures/Figure1.svg", ggplot2::last_plot(), units = 'cm', dpi = 1200, wi
 ggsave("Figures/Figure1.pdf", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
 
 # Uncomment for Fish figure (SI)
-# ggsave("Figures/Figure1_Fish.png", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
-# ggsave("Figures/Figure1_Fish.svg", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
+# ggsave("Figures/ExtData-Figures/ExtFig_Fish.png", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
+# ggsave("Figures/ExtData-Figures/ExtFig_Fish.svg", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
 
 ## Version 2 - Facets --------
 

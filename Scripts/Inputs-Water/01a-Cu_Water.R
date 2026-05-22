@@ -18,7 +18,7 @@ table(df$Mineral)
 df <- df |> filter(Mineral != "Cobalt") # only one obs
 
 # Scatter
-ggplot(df, aes(ore_grade, TotalWater_m3_tonCu, col = Mine_type2)) +
+ggplot(df, aes(ore_grade, TotalWater_m3_tonCu)) +
   geom_point(size=3) +
   geom_line(stat = "smooth", method = "lm", formula = y ~ I(1 / x) - 1, alpha = 0.7, linewidth = 1) +
   # geom_line(
