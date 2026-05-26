@@ -659,7 +659,7 @@ data_bi2 <- data_full |>
   drop_na(cat, water_impact_B, cost_B)
 
 data_bi3 <- data_full |>
-  mutate(cat = if_else(desal == 1, "Desalination", "No Desal.")) |>
+  mutate(cat = if_else(desal == 1, "Desalination", "No desalination")) |>
   drop_na(cat, water_impact_B, cost_B)
 
 # Same joint split as Panel 4 in section 9a
@@ -686,14 +686,14 @@ data_bi5 <- data_full |>
         desal == 0 &
         # mineral_demand >= 1100 &
         recovery_Copper < 0.70 &
-        water_Copper > 0.75 ~ "Cost optimal\nCu ↓Recov. ↑Water\nNo desal.",
+        water_Copper > 0.75 ~ "Cost optimal\nCu ↓Recov. ↑Water\nNo desalination",
       TRUE ~ NA_character_
     )
   ) |>
   drop_na(cat, water_impact_B, cost_B)
 
 n_best <- sum(data_bi5$cat == "+10% Cost\nCu ↑Recov. ↓Water\nDesalination")
-n_worst <- sum(data_bi5$cat == "Cost optimal\nCu ↓Recov. ↑Water\nNo desal.")
+n_worst <- sum(data_bi5$cat == "Cost optimal\nCu ↓Recov. ↑Water\nNo desalination")
 cat(sprintf("Panel k — Best case n = %d | Worst case n = %d\n", n_best, n_worst))
 # WARNING: joint filter may yield <200 obs; ellipses/HDRs may be unreliable if so
 
@@ -701,11 +701,11 @@ cat(sprintf("Panel k — Best case n = %d | Worst case n = %d\n", n_best, n_wors
 
 colors_bi1 <- c("Demand\n<1,000 Mt" = "#6a51a3", "Demand\n>1,100 Mt" = "#3f007d")
 colors_bi2 <- c("Cost\nOptimal" = "#08306b", "+5% Cost\nIncrease" = "#3690c0", "+25%" = "#74c6e8")
-colors_bi3 <- c("Desalination" = "#1B7A8A", "No Desal." = "#041310")
+colors_bi3 <- c("Desalination" = "#1B7A8A", "No desalination" = "#041310")
 colors_bi4 <- c("High recovery,\nLow water" = "#7f2704", "Low recovery,\nHigh water" = "#f16913")
 colors_bi5 <- c(
   "+10% Cost\nCu ↑Recov. ↓Water\nDesalination" = "#1A7837",
-  "Cost optimal\nCu ↓Recov. ↑Water\nNo desal." = "#B2182B"
+  "Cost optimal\nCu ↓Recov. ↑Water\nNo desalination" = "#B2182B"
 )
 
 ## --- Median points per panel -------------------------------------------------
@@ -730,7 +730,7 @@ make_hdr_panel <- function(data, medians, colors, title, letter, text_labels = N
     geom_hdr(probs = 0.33, alpha = 0.40) +
     geom_point(data = medians, aes(x = x, y = y), size = 3, shape = 16) +
     # fmt: skip
-    annotate("text", x = Inf, y = Inf, label = letter, hjust = 1.2, vjust = 1.2, fontface = "bold", size = 14 * 5 / 14 * 0.8, colour = "black") +
+    annotate("text", x = Inf, y = Inf, label = letter, hjust = 1.3, vjust = 1.2, fontface = "bold", size = 14 * 5 / 14 * 0.8, colour = "black") +
     scale_color_manual(values = colors) +
     scale_fill_manual(values = colors) +
     labs(title = title) +
@@ -750,9 +750,9 @@ make_hdr_panel <- function(data, medians, colors, title, letter, text_labels = N
 
 text_1 <- tibble(x = c(6.5, 1.5) * 1e3, y = c(3, 8.5) * 1e3, label = names(colors_bi1))
 text_2 <- tibble(x = c(8.1, 5.8, 1.5) * 1e3, y = c(5.5, 6.8, 7) * 1e3, label = names(colors_bi2))
-text_3 <- tibble(x = c(6.5, 1.5) * 1e3, y = c(2.8, 8) * 1e3, label = names(colors_bi3))
+text_3 <- tibble(x = c(6.5, 3) * 1e3, y = c(2.8, 8.2) * 1e3, label = names(colors_bi3))
 text_4 <- tibble(x = c(6, 2.2) * 1e3, y = c(2.5, 8.6) * 1e3, label = names(colors_bi4))
-text_5 <- tibble(x = c(5, 3.1) * 1e3, y = c(3, 8.4) * 1e3, label = names(colors_bi5))
+text_5 <- tibble(x = c(5, 3.1) * 1e3, y = c(3, 8.3) * 1e3, label = names(colors_bi5))
 
 
 p_hdr_b <- make_hdr_panel(data_bi1, med_bi1, colors_bi1, "Avoid demand", "b", text_1) +
