@@ -504,9 +504,15 @@ design <- "
 AAB
 CDE
 "
-(p_vi + p_demand + p_epsilon + p_desal + p_copper) + plot_layout(design = design)
+(p_vi + p_demand + p_epsilon + p_desal + p_copper) +
+  plot_layout(design = design) &
+  theme(
+    plot.background = element_rect(fill = "transparent", color = NA),
+    panel.background = element_rect(fill = "transparent", color = NA)
+  )
 ggsave("Figures/Figure4.png", ggplot2::last_plot(), units = "cm", dpi = 600, width = 18, height = 17.4)
 ggsave("Figures/Figure4.svg", ggplot2::last_plot(), units = "cm", dpi = 600, width = 18, height = 17.4)
+clean_svg("Figures/Figure4.svg")
 
 
 ## Conditional density figures ---------------------------------------
@@ -771,10 +777,16 @@ p_hdr_b
 # fmt: skip
 ggsave("test.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 6, height = 17/2)
 
-(p_vi_3cat | p_hdr_b | p_hdr_c) / (p_hdr_d | p_hdr_e | p_hdr_f)
+(p_vi_3cat | p_hdr_b | p_hdr_c) /
+  (p_hdr_d | p_hdr_e | p_hdr_f) &
+  theme(
+    plot.background = element_rect(fill = "transparent", color = NA),
+    panel.background = element_rect(fill = "transparent", color = NA)
+  )
 # fmt: skip
 ggsave("Figures/Figure4.png", ggplot2::last_plot(), units = "cm", dpi = 600, width = 18, height = 17)
 ggsave("Figures/Figure4.svg", ggplot2::last_plot(), units = "cm", dpi = 600, width = 18, height = 17)
+clean_svg("Figures/Figure4.svg")
 
 
 # =============================================================================
@@ -916,7 +928,7 @@ p_vi_co <- ggplot(plot_data_co, aes(x = bin_center, y = importance / 100, fill =
   geom_area(position = "fill", color = "black", linewidth = 0.15) +
   geom_text(
     data = label_data_co,
-    aes(x = 7.5, y = ymid, label = display_name),
+    aes(x = 2, y = ymid, label = display_name),
     hjust = 0, vjust = 0.5, size = 2.0, color = "white", fontface = "bold",
     show.legend = FALSE, lineheight = 0.85
   ) +
@@ -1132,8 +1144,14 @@ design <- "
 AAB
 CDE
 "
-(p_vi_co + p_co_demand + p_co_fish + p_desal_co + p_co_recovery) + plot_layout(design = design)
+(p_vi_co + p_co_demand + p_co_fish + p_desal_co + p_co_recovery) +
+  plot_layout(design = design) &
+  theme(
+    plot.background = element_rect(fill = "transparent", color = NA),
+    panel.background = element_rect(fill = "transparent", color = NA)
+  )
 # fmt: skip
 ggsave("Figures/ExtData-Figures/Figure4_cobalt.png", ggplot2::last_plot(), units = "cm", dpi = 600, width = 18, height = 17.4)
 # fmt: skip
 ggsave("Figures/ExtData-Figures/Figure4_cobalt.svg", ggplot2::last_plot(), units = "cm", dpi = 600, width = 18, height = 17.4)
+clean_svg("Figures/ExtData-Figures/Figure4_cobalt.svg")

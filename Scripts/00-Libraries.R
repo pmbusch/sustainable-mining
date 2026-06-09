@@ -40,4 +40,15 @@ file.sources = list.files("Scripts/00-Functions", pattern = "*.R$", full.names =
 sapply(file.sources, source, .GlobalEnv)
 rm(file.sources)
 
+# Common function to save SVG files with text without the auto-text size autoformatting
+clean_svg <- function(filename, output = filename) {
+  svg_content <- readLines(filename, warn = FALSE)
+  # Handle both single and double quotes
+  svg_content <- gsub('textLength="[^"]*"', '', svg_content)
+  svg_content <- gsub("textLength='[^']*'", '', svg_content)
+  svg_content <- gsub('lengthAdjust="[^"]*"', '', svg_content)
+  svg_content <- gsub("lengthAdjust='[^']*'", '', svg_content)
+  writeLines(svg_content, output)
+}
+
 # EoF

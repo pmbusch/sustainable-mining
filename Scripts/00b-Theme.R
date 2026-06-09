@@ -10,7 +10,8 @@ theme_pb <- function(
   preset = c("small", "wide", "largeFont"),
   base_family = "",
   text_col = "#222222",
-  panel_border_col = "black"
+  panel_border_col = "black",
+  panel_background = "transparent"
 ) {
   preset <- match.arg(preset)
   # base sizes calibrated to figure sizes
@@ -36,11 +37,12 @@ theme_pb <- function(
       plot.subtitle = ggplot2::element_text(size = base_size, hjust = 0.5),
       plot.caption = ggplot2::element_text(size = base_size - 2, hjust = 1, colour = text_col, lineheight = 0.9),
       plot.tag = ggplot2::element_text(size = sz_plot_tag, face = "bold"),
+      plot.background = ggplot2::element_rect(fill = panel_background, colour = NA),
 
       # Panels and grids
       panel.grid.major = ggplot2::element_blank(),
       panel.grid.minor = ggplot2::element_blank(),
-      panel.background = ggplot2::element_rect(fill = "white", colour = panel_border_col),
+      panel.background = ggplot2::element_rect(fill = panel_background, colour = panel_border_col),
       panel.border = ggplot2::element_rect(colour = panel_border_col, fill = NA),
 
       # Axis
@@ -60,6 +62,7 @@ theme_pb <- function(
       # Legend
       legend.background = ggplot2::element_rect(fill = "transparent", colour = NA),
       legend.key = ggplot2::element_rect(fill = "transparent", colour = NA),
+      legend.box.background = ggplot2::element_rect(fill = "transparent", colour = NA),
       legend.key.size = ggplot2::unit(0.35, "cm"),
       legend.text = ggplot2::element_text(size = sz_legend_text, colour = text_col),
       legend.title = ggplot2::element_text(size = sz_legend_text),

@@ -417,6 +417,7 @@ ggplot(data_fig, aes(x = delta_water, y = delta_profit)) +
 ggsave("Figures/Figure3.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 18, height = 18)
 # fmt: skip
 ggsave("Figures/Figure3.svg", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 18, height = 18)
+clean_svg("Figures/Figure3.svg")
 
 # Option B - equal size ------------------------
 
@@ -611,9 +612,14 @@ legend_plot <- ggplot() +
   )
 
 
-p2 + inset_element(legend_plot, left = 0.8, bottom = 0.0, right = 1.0, top = 0.2)
+p2 + inset_element(legend_plot, left = 0.8, bottom = 0.0, right = 1.0, top = 0.2) &
+  theme(
+    plot.background = element_rect(fill = "transparent", color = NA),
+    panel.background = element_rect(fill = "transparent", color = NA)
+  )
 
 # fmt: skip
 ggsave("Figures/Figure3_option2.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 18, height = 18)
 # fmt: skip
 ggsave("Figures/Figure3_option2.svg", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 18, height = 18)
+clean_svg("Figures/Figure3_option2.svg")
