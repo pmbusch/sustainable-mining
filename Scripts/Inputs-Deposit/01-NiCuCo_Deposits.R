@@ -510,7 +510,11 @@ p_zoom <- ggplot(capex, aes(ore_processed_K, capM, col = primary_min_agg)) +
   labs(x = "", y = "")
 
 library(cowplot)
-ggdraw() + draw_plot(p) + draw_plot(p_zoom, x = 0.55, y = 0.55, width = 0.38, height = 0.38)
+ggdraw() + draw_plot(p) + draw_plot(p_zoom, x = 0.55, y = 0.55, width = 0.38, height = 0.38) &
+  theme(
+    plot.background = element_rect(fill = "transparent", color = NA),
+    panel.background = element_rect(fill = "transparent", color = NA)
+  )
 
 # fmt: skip
 ggsave("Figures/Deposit/Ore_CAPEX.png", ggplot2::last_plot(),units = 'cm', dpi = 600, width = 8.7*2, height = 8.7*2)

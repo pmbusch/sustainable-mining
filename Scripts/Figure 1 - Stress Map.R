@@ -149,8 +149,8 @@ p1 <- ggplot(deps) +
   theme_minimal(8) +
   geom_polygon(data = map1, mapping = aes(x = long, y = lat, group = group), col = 'gray', fill = "white") +
   # Water stress map
-  # geom_sf(data = cf_map, aes(fill = stress), color = "grey30", linewidth = 0.05) +
-  geom_sf(data = cf_map, aes(fill = fish_index), color = "grey30", linewidth = 0.05) + # comment/uncomment for fish biodiversity
+  geom_sf(data = cf_map, aes(fill = stress), color = "grey30", linewidth = 0.05) +
+  # geom_sf(data = cf_map, aes(fill = fish_index), color = "grey30", linewidth = 0.05) + # comment/uncomment for fish biodiversity
   scale_fill_gradientn(
     name = "Water Stress",
     labels = function(x) ifelse(x >= 1, ">100%", scales::percent(x)),
@@ -313,17 +313,26 @@ p_demand <- deps |>
 
 # p_big1 <- p_big + patchwork::inset_element(p_demand, left = 0.01, bottom = 0.01, right = 0.205, top = 0.25)
 
-p_big / wrap_plots(list(p_copper, p_cobalt, p_lithium, p_nickel), nrow = 1) + plot_layout(heights = c(0.61, 0.39))
+p_big /
+  wrap_plots(list(p_copper, p_cobalt, p_lithium, p_nickel), nrow = 1) +
+  plot_layout(heights = c(0.61, 0.39)) &
+  theme(
+    plot.background = element_rect(fill = "transparent", color = NA),
+    panel.background = element_rect(fill = "transparent", color = NA)
+  )
 
 
 # fmt: skip
 ggsave("Figures/Figure1.png", ggplot2::last_plot(),units = 'cm', dpi = 1200, width = 8.7*3, height = 8.7*2)
 ggsave("Figures/Figure1.svg", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
+clean_svg("Figures/Figure1.svg")
 ggsave("Figures/Figure1.pdf", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
 
 # Uncomment for Fish figure (SI)
 # ggsave("Figures/ExtData-Figures/ExtFig_Fish.png", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
-# ggsave("Figures/ExtData-Figures/ExtFig_Fish.svg", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
+# # fmt: skip
+# ggsave("Figures/ExtData-Figures/ExtFig_Fish.svg",ggplot2::last_plot(),units = 'cm',dpi = 1200,width = 8.7 * 3,height = 8.7 * 2)
+# clean_svg("Figures/ExtData-Figures/ExtFig_Fish.svg")
 
 ## Version 2 - Facets --------
 
@@ -350,9 +359,13 @@ p_li <- p1 +
 
 
 # Assemble grid with shared legend at bottom
-plot_grid <- cowplot::plot_grid(p_cu, p_ni, p_co, p_li, nrow = 2)
+plot_grid <- cowplot::plot_grid(p_cu, p_ni, p_co, p_li, nrow = 2) &
+  theme(
+    plot.background = element_rect(fill = "transparent", color = NA),
+    panel.background = element_rect(fill = "transparent", color = NA)
+  )
 plot_grid
 
-ggsave("Figures/Figure1_v2.png", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 4, height = 8.7 * 2)
+ggsave("Figures/old/Figure1_v2.png", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 4, height = 8.7 * 2)
 
 # EoF
