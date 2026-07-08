@@ -63,6 +63,7 @@ revShare <- deposit |>
     cobalt_share = cobalt_revenue / total_revenue,
     lithium_share = lithium_revenue / total_revenue
   ) |>
+  # mutate(copper_share = 1, nickel_share = 1, cobalt_share = 1, lithium_share = 1) |> #debug
   dplyr::select(ID, Name, copper_share, nickel_share, cobalt_share, lithium_share)
 
 # fmt: skip
