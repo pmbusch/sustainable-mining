@@ -621,6 +621,119 @@ p_c_fig
 ggsave("Figures/Test_FigurePanels/Fig2C.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 8.5, height = 8.7)
 
 # ============================================================
+# EXPLORATORY - PANEL C ALT: MINERAL DECOMPOSITION BY DEMAND SCENARIO
+# One free-scale panel per mineral, each with NZE/APS/SPS curves
+# (same underlying data as Panel C, but split by mineral instead of
+# by color, and split by demand scenario instead of only NZE)
+# Not wired into the final fig2 assembly - exploratory only
+# ============================================================
+
+data_fig_2b <- mineral_decomp_demand |>
+  mutate(metric = factor(metric, levels = metric_levels)) |>
+  filter(metric != "No Water Constraint") |>
+  dplyr::select(Scenario, metric, contains("perTon")) |>
+  pivot_longer(cols = -c(Scenario, metric), names_to = c("Mineral", "Type"), names_sep = "_", values_to = "Value") |>
+  pivot_wider(names_from = Type, values_from = Value) |>
+  mutate(
+    lab_metric = case_when(
+      metric == "0%" ~ "Optimal Cost",
+      metric == "0.5%" ~ paste0(metric, " Cost Increase"),
+      TRUE ~ as.character(metric)
+    )
+  )
+
+names(data_fig_2b) <- names(data_fig_2b) |> str_remove("perTon")
+
+write.csv(data_fig_2b, "Figures/Data_Figures/Fig2b_MineralByDemandScenario.csv", row.names = FALSE)
+
+# Reference point for dashed lines and secondary axes: NZE optimal cost, per mineral
+df_opt_2b <- data_fig_2b |> filter(Scenario == "NZE", metric == "0%")
+
+demand_scen_colors <- c("NZE" = "#C44E00", "APS" = "#5E8A00", "SPS" = "#1A6FA4")
+
+make_panel_2b <- function(mineral_name, label_hjust = c(NZE = 0.15, APS = 0.5, SPS = 0.82), smooth_curves = FALSE) {
+  d <- filter(data_fig_2b, Mineral == mineral_name)
+  opt <- filter(df_opt_2b, Mineral == mineral_name)
+
+  p <- ggplot(d, aes(Water, Cost, col = Scenario)) +
+    geom_vline(xintercept = opt$Water, linetype = "dashed", col = "#999999", linewidth = 0.3) +
+    geom_hline(yintercept = opt$Cost, linetype = "dashed", col = "#999999", linewidth = 0.3)
+
+  # simple LOESS smoothing (visual only) for the noisier byproduct-mineral curves
+  if (smooth_curves) {
+    # p <- p + geom_smooth(method = "lm",formula=y~exp(x), se=FALSE, linewidth=0.5)
+    p <- p + geom_smooth(method = "lm", formula = y ~ poly(x, 2), se = FALSE, linewidth = 0.5)
+    # p <- p + geom_smooth(method = "loess", formula = y ~ x, se = FALSE, span = 0.5, linewidth = 0.5)
+  } else {
+    p <- p + geom_line(linewidth = 0.5)
+  }
+
+  # direct labels following each curve, staggered along the path to avoid overlap
+  for (scen in names(label_hjust)) {
+    p <- p +
+      geomtextpath::geom_textpath(
+        data = filter(d, Scenario == scen),
+        aes(label = Scenario),
+        hjust = label_hjust[[scen]],
+        vjust = 0,
+        size = (label_text + 2) * 5 / 14 * 0.8,
+        text_only = TRUE
+      )
+  }
+
+  p +
+    geom_point(data = opt, col = "#999999", size = 0.6) +
+    labs(x = expression("Scarce Water Use (" ~ m^3 * "-eq per ton)"), y = "Cost (USD per ton)", title = mineral_name) +
+    scale_y_continuous(
+      labels = dollar_format(big.mark = ",", prefix = "$"),
+      sec.axis = sec_axis(
+        ~ (. - opt$Cost) / opt$Cost,
+        name = "Change in Cost relative to NZE Optimal (%)",
+        labels = scales::percent
+      )
+    ) +
+    scale_x_continuous(
+      labels = scales::label_comma(),
+      sec.axis = sec_axis(
+        ~ (. - opt$Water) / opt$Water,
+        name = "Change in Water Stress relative to NZE Optimal (%)",
+        labels = scales::percent
+      )
+    ) +
+    scale_color_manual(values = demand_scen_colors) +
+    guides(color = "none") +
+    theme_pb_large() +
+    theme(
+      panel.grid = element_blank(),
+      legend.position = "none",
+      plot.title = element_text(size = 10, face = "bold", colour = minerals_colors[[mineral_name]], hjust = 0.5),
+      axis.title.y.right = element_text(size = 6, colour = "#AAAAAA"),
+      axis.text.y.right = element_text(size = 6, colour = "#AAAAAA"),
+      axis.title.x.top = element_text(size = 6, colour = "#AAAAAA"),
+      axis.text.x.top = element_text(size = 6, colour = "#AAAAAA"),
+      axis.ticks.y.right = element_line(color = "#AAAAAA"),
+      axis.ticks.x.top = element_line(color = "#AAAAAA")
+    )
+}
+
+p_2b_copper <- make_panel_2b("Copper")
+p_2b_nickel <- make_panel_2b("Nickel", smooth_curves = TRUE)
+p_2b_nickel <- make_panel_2b("Nickel")
+p_2b_cobalt <- make_panel_2b("Cobalt", smooth_curves = TRUE)
+p_2b_cobalt <- make_panel_2b("Cobalt")
+p_2b_lithium <- make_panel_2b("Lithium")
+
+library(patchwork)
+p_2b <- (p_2b_copper | p_2b_lithium) / (p_2b_nickel | p_2b_cobalt)
+p_2b
+
+# fmt: skip
+ggsave("Figures/Test_FigurePanels/Fig2b_MineralByDemandScenario.png", p_2b, units = 'cm', dpi = 600, width = 17, height = 17)
+# fmt: skip
+ggsave("Figures/Test_FigurePanels/Fig2b_MineralByDemandScenario.svg", p_2b, units = 'cm', dpi = 600, width = 17, height = 17)
+clean_svg("Figures/Test_FigurePanels/Fig2b_MineralByDemandScenario.svg")
+
+# ============================================================
 # PANEL B - BIODIVERSITY SCENARIOS -------------------------
 # ============================================================
 
