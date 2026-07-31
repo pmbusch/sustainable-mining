@@ -143,6 +143,16 @@ cf_map <- cf_map |> mutate(stress = pmin(stress, 1)) # cap at 100% to avoid outl
 skimr::skim(cf_map$stress)
 skimr::skim(cf_map$fish_index)
 
+# SAVE FIGURE DATA ------------
+
+# Basin water stress (panel a background): keyed by Basin_ID, geometry dropped (polygons not needed in tabular form)
+data_fig1_basin <- cf_map |> st_drop_geometry() |> dplyr::select(Basin_ID, stress)
+write.csv(data_fig1_basin, "Figures/Data_Figures/Fig1_BasinWaterStress.csv", row.names = FALSE)
+
+# Mineral deposits shown (main map + mineral insets)
+data_fig1_deposits <- deps |> dplyr::select(ID, PRIMARY_COMMODITY, Mineral, LONGITUDE, LATITUDE, resources)
+write.csv(data_fig1_deposits, "Figures/Data_Figures/Fig1_Deposits.csv", row.names = FALSE)
+
 map1 <- map_data('world')
 p1 <- ggplot(deps) +
   # base map

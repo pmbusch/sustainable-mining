@@ -66,6 +66,116 @@ revShare <- deposit |>
   # mutate(copper_share = 1, nickel_share = 1, cobalt_share = 1, lithium_share = 1) |> #debug
   dplyr::select(ID, Name, copper_share, nickel_share, cobalt_share, lithium_share)
 
+# ============================================================
+# 00b. DEMAND-CAPPED CO-PRODUCT ALLOCATION --------------------
+# Co-mined by-products (esp. cobalt riding on Cu/Ni ore) can be
+# produced far beyond what demand requires. Excess tonnage above
+# cumulative 2025-2050 demand is a by-product of another metal's
+# extraction and should not be charged against that mineral's
+# cost/water intensity: the worst (highest cost+water) tail of
+# deposits has that mineral's allocation share zeroed and
+# redistributed to the deposit's other Cu/Ni/Co co-products.
+# ============================================================
+
+# Cumulative 2025-2050 demand (Mt) per mineral per demand scenario
+demand_mt <- demand |>
+  dplyr::select(Scenario, Year, Copper, Nickel, Lithium, Cobalt) |>
+  pivot_longer(c(-Scenario, -Year), names_to = "Mineral", values_to = "Demand") |>
+  group_by(Scenario, Mineral) |>
+  reframe(Demand_Mt = sum(Demand) / 1e3) |>
+  ungroup()
+
+# Wide version keyed by demand Scenario (SPS/APS/NZE), used as the per-ton denominator
+demand_mt_wide <- demand_mt |>
+  pivot_wider(names_from = Mineral, values_from = Demand_Mt) |>
+  dplyr::rename(Copper_Dem = Copper, Nickel_Dem = Nickel, Cobalt_Dem = Cobalt, Lithium_Dem = Lithium)
+
+# Biodiversity and desalination-cost runs all sit on top of the fixed NZE demand trajectory
+nze_dem <- demand_mt_wide |> filter(Scenario == "NZE")
+
+# For each mineral, within each (Scenario, metric) run, cap attributed production at
+# demand: rank deposits with nonzero production of that mineral by the average of their
+# percentile rank on cost-per-ton and water-per-ton (baseline shares), and keep only the
+# best-ranked deposits up to the one where cumulative production first reaches demand.
+cap_mineral_tail <- function(dep_totals, mineral, demand_mt) {
+  share_col <- c(Copper = "copper_share", Nickel = "nickel_share", Cobalt = "cobalt_share", Lithium = "lithium_share")[[
+    mineral
+  ]]
+
+  dep_totals |>
+    dplyr::select(
+      Scenario,
+      metric,
+      DemandScenario,
+      ID,
+      prod = all_of(mineral),
+      costs,
+      water,
+      share = all_of(share_col)
+    ) |>
+    mutate(cost_pt = share * costs / prod, water_pt = share * water / prod) |>
+    left_join(
+      demand_mt |> filter(Mineral == mineral) |> dplyr::select(DemandScenario = Scenario, Demand_Mt),
+      by = "DemandScenario"
+    ) |>
+    group_by(Scenario, metric) |>
+    group_modify(function(df, key) {
+      total_prod <- sum(df$prod, na.rm = TRUE)
+      dem <- unique(df$Demand_Mt)[1]
+      if (is.na(dem) || total_prod <= dem) {
+        df$keep <- TRUE
+        return(df)
+      }
+      ranked <- df |>
+        filter(prod > 0) |>
+        mutate(
+          rank_cost = percent_rank(cost_pt),
+          rank_water = percent_rank(water_pt),
+          rank_comb = (rank_cost + rank_water) / 2
+        ) |>
+        arrange(rank_comb) |>
+        mutate(cum_prod = cumsum(prod))
+      cutoff <- which(ranked$cum_prod >= dem)[1]
+      if (is.na(cutoff)) {
+        cutoff <- nrow(ranked)
+      }
+      keep_ids <- ranked$ID[seq_len(cutoff)]
+      df$keep <- df$ID %in% keep_ids | df$prod == 0
+      df
+    }) |>
+    ungroup() |>
+    dplyr::select(Scenario, metric, ID, keep)
+}
+
+# Zero the flagged (Scenario, metric, ID, mineral) shares and redistribute each deposit's
+# zeroed share mass proportionally across its remaining Cu/Ni/Co shares (never to Lithium)
+cap_and_redistribute_shares <- function(dep_totals, demand_mt) {
+  keep_flags <- dep_totals |> dplyr::select(Scenario, metric, ID)
+  for (m in c("Copper", "Nickel", "Cobalt", "Lithium")) {
+    flag <- cap_mineral_tail(dep_totals, m, demand_mt)
+    names(flag)[names(flag) == "keep"] <- paste0("keep_", m)
+    keep_flags <- keep_flags |> left_join(flag, by = c("Scenario", "metric", "ID"))
+  }
+
+  dep_totals |>
+    left_join(keep_flags, by = c("Scenario", "metric", "ID")) |>
+    mutate(
+      z_copper = if_else(keep_Copper, copper_share, 0),
+      z_nickel = if_else(keep_Nickel, nickel_share, 0),
+      z_cobalt = if_else(keep_Cobalt, cobalt_share, 0),
+      excess = if_else(keep_Copper, 0, copper_share) +
+        if_else(keep_Nickel, 0, nickel_share) +
+        if_else(keep_Cobalt, 0, cobalt_share) +
+        if_else(keep_Lithium, 0, lithium_share),
+      pool = z_copper + z_nickel + z_cobalt,
+      copper_share_adj = z_copper + if_else(pool > 0, z_copper / pool * excess, 0),
+      nickel_share_adj = z_nickel + if_else(pool > 0, z_nickel / pool * excess, 0),
+      cobalt_share_adj = z_cobalt + if_else(pool > 0, z_cobalt / pool * excess, 0),
+      lithium_share_adj = if_else(keep_Lithium, lithium_share, 0)
+    ) |>
+    dplyr::select(-z_copper, -z_nickel, -z_cobalt, -excess, -pool, -starts_with("keep_"))
+}
+
 # fmt: skip
 metric_levels <- c("No Water Constraint","0%","0.5%","1%","2%","3%","4%","5%","6%","8%","10%","12%","15%","20%","25%")
 
@@ -187,17 +297,30 @@ data_decomp_demand <- opt_results_demand |>
     costs = costs / (1 + r)^(t - 2025),
     water = ktons_extracted * water_footprint / 1e6 # billion m3-eq
   ) |>
-  # Allocate costs at each deposit based on revenue share
+  # Aggregate to deposit level (Scenario x metric x ID) across the full horizon,
+  # then cap each mineral's allocation share at demand before splitting costs/water
+  group_by(Scenario, metric, ID) |>
+  reframe(
+    Copper = sum(Copper),
+    Nickel = sum(Nickel),
+    Cobalt = sum(Cobalt),
+    Lithium = sum(Lithium),
+    costs = sum(costs),
+    water = sum(water)
+  ) |>
+  ungroup() |>
   left_join(revShare) |>
+  mutate(DemandScenario = Scenario) |>
+  cap_and_redistribute_shares(demand_mt) |>
   mutate(
-    copper_cost = copper_share * costs,
-    nickel_cost = nickel_share * costs,
-    cobalt_cost = cobalt_share * costs,
-    lithium_cost = lithium_share * costs,
-    copper_water = copper_share * water,
-    nickel_water = nickel_share * water,
-    cobalt_water = cobalt_share * water,
-    lithium_water = lithium_share * water
+    copper_cost = copper_share_adj * costs,
+    nickel_cost = nickel_share_adj * costs,
+    cobalt_cost = cobalt_share_adj * costs,
+    lithium_cost = lithium_share_adj * costs,
+    copper_water = copper_share_adj * water,
+    nickel_water = nickel_share_adj * water,
+    cobalt_water = cobalt_share_adj * water,
+    lithium_water = lithium_share_adj * water
   ) |>
   group_by(Scenario, metric) |>
   reframe(
@@ -303,15 +426,18 @@ data_decomp_demand <- data_decomp_demand |>
     lithium_cost = lithium_cost + slack_li_cost,
     costs = costs + slack_cu_cost + slack_ni_cost + slack_co_cost + slack_li_cost
   ) |>
+  # Per-ton metrics use cumulative demand (not production) as the denominator,
+  # so by-product tonnage nobody needs doesn't dilute the per-ton cost/water
+  left_join(demand_mt_wide, by = "Scenario") |>
   mutate(
-    Copper_CostperTon = copper_cost * 1e3 / Copper, # USD per ton
-    Nickel_CostperTon = nickel_cost * 1e3 / Nickel,
-    Cobalt_CostperTon = cobalt_cost * 1e3 / Cobalt,
-    Lithium_CostperTon = lithium_cost * 1e3 / Lithium,
-    Copper_WaterperTon = copper_water * 1e3 / Copper, # m3 per ton
-    Nickel_WaterperTon = nickel_water * 1e3 / Nickel,
-    Cobalt_WaterperTon = cobalt_water * 1e3 / Cobalt,
-    Lithium_WaterperTon = lithium_water * 1e3 / Lithium
+    Copper_CostperTon = copper_cost * 1e3 / Copper_Dem, # USD per ton of demand
+    Nickel_CostperTon = nickel_cost * 1e3 / Nickel_Dem,
+    Cobalt_CostperTon = cobalt_cost * 1e3 / Cobalt_Dem,
+    Lithium_CostperTon = lithium_cost * 1e3 / Lithium_Dem,
+    Copper_WaterperTon = copper_water * 1e3 / Copper_Dem, # m3 per ton of demand
+    Nickel_WaterperTon = nickel_water * 1e3 / Nickel_Dem,
+    Cobalt_WaterperTon = cobalt_water * 1e3 / Cobalt_Dem,
+    Lithium_WaterperTon = lithium_water * 1e3 / Lithium_Dem
   )
 
 head(data_decomp_demand)
@@ -440,16 +566,29 @@ data_decomp_biod <- opt_results_biod |>
     costs = costs / (1 + r)^(t - 2025),
     water = ktons_extracted * water_footprint / 1e6
   ) |>
+  # Aggregate to deposit level, then cap each mineral's allocation share at NZE demand
+  group_by(Scenario, metric, ID) |>
+  reframe(
+    Copper = sum(Copper),
+    Nickel = sum(Nickel),
+    Cobalt = sum(Cobalt),
+    Lithium = sum(Lithium),
+    costs = sum(costs),
+    water = sum(water)
+  ) |>
+  ungroup() |>
   left_join(revShare) |>
+  mutate(DemandScenario = "NZE") |>
+  cap_and_redistribute_shares(demand_mt) |>
   mutate(
-    copper_cost = copper_share * costs,
-    nickel_cost = nickel_share * costs,
-    cobalt_cost = cobalt_share * costs,
-    lithium_cost = lithium_share * costs,
-    copper_water = copper_share * water,
-    nickel_water = nickel_share * water,
-    cobalt_water = cobalt_share * water,
-    lithium_water = lithium_share * water
+    copper_cost = copper_share_adj * costs,
+    nickel_cost = nickel_share_adj * costs,
+    cobalt_cost = cobalt_share_adj * costs,
+    lithium_cost = lithium_share_adj * costs,
+    copper_water = copper_share_adj * water,
+    nickel_water = nickel_share_adj * water,
+    cobalt_water = cobalt_share_adj * water,
+    lithium_water = lithium_share_adj * water
   ) |>
   group_by(Scenario, metric) |>
   reframe(
@@ -571,15 +710,16 @@ data_decomp_biod <- data_decomp_biod |>
     lithium_cost = lithium_cost + slack_li_cost,
     costs = costs + slack_cu_cost + slack_ni_cost + slack_co_cost + slack_li_cost
   ) |>
+  # Per-ton metrics use cumulative NZE demand (not production) as the denominator
   mutate(
-    Copper_CostperTon = copper_cost * 1e3 / Copper,
-    Nickel_CostperTon = nickel_cost * 1e3 / Nickel,
-    Cobalt_CostperTon = cobalt_cost * 1e3 / Cobalt,
-    Lithium_CostperTon = lithium_cost * 1e3 / Lithium,
-    Copper_WaterperTon = copper_water * 1e3 / Copper,
-    Nickel_WaterperTon = nickel_water * 1e3 / Nickel,
-    Cobalt_WaterperTon = cobalt_water * 1e3 / Cobalt,
-    Lithium_WaterperTon = lithium_water * 1e3 / Lithium
+    Copper_CostperTon = copper_cost * 1e3 / nze_dem$Copper_Dem,
+    Nickel_CostperTon = nickel_cost * 1e3 / nze_dem$Nickel_Dem,
+    Cobalt_CostperTon = cobalt_cost * 1e3 / nze_dem$Cobalt_Dem,
+    Lithium_CostperTon = lithium_cost * 1e3 / nze_dem$Lithium_Dem,
+    Copper_WaterperTon = copper_water * 1e3 / nze_dem$Copper_Dem,
+    Nickel_WaterperTon = nickel_water * 1e3 / nze_dem$Nickel_Dem,
+    Cobalt_WaterperTon = cobalt_water * 1e3 / nze_dem$Cobalt_Dem,
+    Lithium_WaterperTon = lithium_water * 1e3 / nze_dem$Lithium_Dem
   )
 
 write.csv(data_decomp_biod, "Results/Processed/mineral_decomp_biod.csv", row.names = FALSE)
@@ -702,16 +842,29 @@ data_decomp_CostDes <- opt_results_CostDes |>
     costs = costs / (1 + r)^(t - 2025),
     water = ktons_extracted * water_footprint / 1e6
   ) |>
+  # Aggregate to deposit level, then cap each mineral's allocation share at NZE demand
+  group_by(Scenario, metric, ID) |>
+  reframe(
+    Copper = sum(Copper),
+    Nickel = sum(Nickel),
+    Cobalt = sum(Cobalt),
+    Lithium = sum(Lithium),
+    costs = sum(costs),
+    water = sum(water)
+  ) |>
+  ungroup() |>
   left_join(revShare) |>
+  mutate(DemandScenario = "NZE") |>
+  cap_and_redistribute_shares(demand_mt) |>
   mutate(
-    copper_cost = copper_share * costs,
-    nickel_cost = nickel_share * costs,
-    cobalt_cost = cobalt_share * costs,
-    lithium_cost = lithium_share * costs,
-    copper_water = copper_share * water,
-    nickel_water = nickel_share * water,
-    cobalt_water = cobalt_share * water,
-    lithium_water = lithium_share * water
+    copper_cost = copper_share_adj * costs,
+    nickel_cost = nickel_share_adj * costs,
+    cobalt_cost = cobalt_share_adj * costs,
+    lithium_cost = lithium_share_adj * costs,
+    copper_water = copper_share_adj * water,
+    nickel_water = nickel_share_adj * water,
+    cobalt_water = cobalt_share_adj * water,
+    lithium_water = lithium_share_adj * water
   ) |>
   group_by(Scenario, metric) |>
   reframe(
@@ -826,15 +979,16 @@ data_decomp_CostDes <- data_decomp_CostDes |>
     lithium_cost = lithium_cost + slack_li_cost,
     costs = costs + slack_cu_cost + slack_ni_cost + slack_co_cost + slack_li_cost
   ) |>
+  # Per-ton metrics use cumulative NZE demand (not production) as the denominator
   mutate(
-    Copper_CostperTon = copper_cost * 1e3 / Copper,
-    Nickel_CostperTon = nickel_cost * 1e3 / Nickel,
-    Cobalt_CostperTon = cobalt_cost * 1e3 / Cobalt,
-    Lithium_CostperTon = lithium_cost * 1e3 / Lithium,
-    Copper_WaterperTon = copper_water * 1e3 / Copper,
-    Nickel_WaterperTon = nickel_water * 1e3 / Nickel,
-    Cobalt_WaterperTon = cobalt_water * 1e3 / Cobalt,
-    Lithium_WaterperTon = lithium_water * 1e3 / Lithium
+    Copper_CostperTon = copper_cost * 1e3 / nze_dem$Copper_Dem,
+    Nickel_CostperTon = nickel_cost * 1e3 / nze_dem$Nickel_Dem,
+    Cobalt_CostperTon = cobalt_cost * 1e3 / nze_dem$Cobalt_Dem,
+    Lithium_CostperTon = lithium_cost * 1e3 / nze_dem$Lithium_Dem,
+    Copper_WaterperTon = copper_water * 1e3 / nze_dem$Copper_Dem,
+    Nickel_WaterperTon = nickel_water * 1e3 / nze_dem$Nickel_Dem,
+    Cobalt_WaterperTon = cobalt_water * 1e3 / nze_dem$Cobalt_Dem,
+    Lithium_WaterperTon = lithium_water * 1e3 / nze_dem$Lithium_Dem
   )
 
 head(data_decomp_CostDes)
