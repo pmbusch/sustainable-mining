@@ -157,7 +157,8 @@ plot_data_water <- shap_bins_lgbm %>%
   summarise(importance = sum(importance), .groups = "drop") %>%
   mutate(display_name = factor(display_name, levels = rev(water_display_names)))
 
-write_csv(plot_data_water, "Figures/Data_Figures/Fig4c8a_water_shap.csv")
+# Note: plot_data_water feeds p_vi, which is superseded by p_vi_3cat below
+# (both write to Figures/Figure4.png; the 3-category version wins) — not saved.
 
 label_data_water <- plot_data_water %>%
   filter(bin_center == 4750) %>%
@@ -237,6 +238,8 @@ shap_3cat_display <- shap_3cat %>%
   ungroup() %>%
   mutate(display_name = factor(display_name, levels = rev(water_display_names)))
 
+write_csv(shap_3cat_display, "Figures/Data_Figures/Fig4a_water_shap_3cat.csv")
+
 # Label midpoints for direct annotation (only segments wide enough to label)
 label_3cat <- shap_3cat_display %>%
   filter(impact_level == "3-6") |>
@@ -306,7 +309,7 @@ data_p1 <- data_single |>
       TRUE ~ "NA"
     )
   )
-write_csv(data_p1, "Figures/Data_Figures/Fig4c9a1_dens_demand.csv")
+# Note: feeds p_demand, superseded by p_hdr_b below (both write Figures/Figure4.png) — not saved.
 
 colors_cut1 <- c("Demand <1,050 Mt" = "#6a51a3", "Demand >1,050 Mt" = "#3f007d")
 
@@ -358,7 +361,7 @@ data_p2 <- data_single |>
     )
   ) |>
   filter(!is.na(cat))
-write_csv(data_p2, "Figures/Data_Figures/Fig4c9a2_dens_epsilon.csv")
+# Note: feeds p_epsilon, superseded by p_hdr_c below (both write Figures/Figure4.png) — not saved.
 
 colors_cut <- c("Cost Optimal" = "#08306b", "1% Cost Increase" = "#045a8d", "10% Cost Increase" = "#3690c0")
 
@@ -401,7 +404,7 @@ p_epsilon
 
 ## --- Panel 3: Desalination Availability --------------------------------------
 data_p3 <- data_single |> mutate(cat = case_when(desal == 1 ~ "Desalination", TRUE ~ "No Desalination"))
-write_csv(data_p3, "Figures/Data_Figures/Fig4c9a3_dens_desal.csv")
+# Note: feeds p_desal, superseded by p_hdr_d below (both write Figures/Figure4.png) — not saved.
 
 colors_cut <- c(colors_cut, "Desalination" = "#1B7A8A", "No Desalination" = "#041310")
 
@@ -453,7 +456,7 @@ data_p4 <- data_single |>
     )
   ) |>
   filter(!is.na(cat))
-write_csv(data_p4, "Figures/Data_Figures/Fig4c9a4_dens_copper.csv")
+# Note: feeds p_copper, superseded by p_hdr_e below (both write Figures/Figure4.png) — not saved.
 lbl_p4 <- data_p4 |>
   group_by(cat) |>
   summarise(
@@ -703,6 +706,16 @@ n_worst <- sum(data_bi5$cat == "Cost optimal\nCu ↓Recov. ↑Water\nNo desalina
 cat(sprintf("Panel k — Best case n = %d | Worst case n = %d\n", n_best, n_worst))
 # WARNING: joint filter may yield <200 obs; ellipses/HDRs may be unreliable if so
 
+# Panels b-f (p_hdr_b..p_hdr_f) are the ones assembled into the final Figures/Figure4.png
+data_fig_bf <- bind_rows(
+  data_bi1 |> mutate(panel = "b") |> select(panel, cat, water_impact_B, cost_B),
+  data_bi2 |> mutate(panel = "c") |> select(panel, cat, water_impact_B, cost_B),
+  data_bi3 |> mutate(panel = "d") |> select(panel, cat, water_impact_B, cost_B),
+  data_bi4 |> mutate(panel = "e") |> select(panel, cat, water_impact_B, cost_B),
+  data_bi5 |> mutate(panel = "f") |> select(panel, cat, water_impact_B, cost_B)
+)
+write_csv(data_fig_bf, "Figures/Data_Figures/Fig4bf_bivariate.csv")
+
 ## --- Color palettes (consistent with section 9a) ----------------------------
 
 colors_bi1 <- c("Demand\n<1,000 Mt" = "#6a51a3", "Demand\n>1,100 Mt" = "#3f007d")
@@ -788,6 +801,403 @@ ggsave("Figures/Figure4.png", ggplot2::last_plot(), units = "cm", dpi = 600, wid
 ggsave("Figures/Figure4.svg", ggplot2::last_plot(), units = "cm", dpi = 600, width = 18, height = 17)
 clean_svg("Figures/Figure4.svg")
 
+
+# =============================================================================
+# FIGURE 4 — REDESIGN (matches Illustrator mockup "Figure_4__Sensitivities_.ai")
+# DESIGN---------------------------------------------------
+#
+# ADDITIVE sections: paste after section 10a in Figure_4_-_VariableImportance.R
+# (or source at the end). Requires objects from the original script:
+#   shap_3cat, top_shap_lgbm, lgbm_features,
+#   data_bi1..data_bi4, med_bi1..med_bi4, theme_pb_large(), clean_svg()
+# Original sections 8b and 10a are left untouched; panel f (data_bi5) is DROPPED.
+#
+# Design spec extracted programmatically from the .ai file (pt sizes, hex colors,
+# opacities, label positions converted to data coordinates). Values marked
+# "# TUNE" were estimated and need one visual pass; everything else is measured.
+#
+# OPEN ITEMS (decided provisionally, revisit):
+#   [1] Star "Least cost" reference = hardcoded (6510, 4550) as measured from
+#       the mockup. Replace with a computed definition (TODO below).
+#   [2] Panel a rows assume relabel of existing bins: <3 -> Low, 3-6 -> Mid,
+#       >6 -> High water stress. If rows should condition on a different
+#       variable, change `stress_level` construction only.
+# =============================================================================
+
+library(ggdensity)
+library(patchwork)
+library(scales)
+
+# -----------------------------------------------------------------------------
+# 0. SHARED DESIGN CONSTANTS (measured from mockup) -----------------------------------
+# -----------------------------------------------------------------------------
+
+# Spectral palette, 8 consolidated categories, left-to-right stacking order
+vi_display_order <- c(
+  "Relocate extraction",
+  "Desalinate",
+  "Water conservation (copper)",
+  "Copper recovery rate",
+  "Demand",
+  "Production rate (copper)",
+  "Avoid fish biodiversity",
+  "All other"
+)
+
+vi_colors <- c(
+  "Relocate extraction" = "#5E4FA2",
+  "Desalinate" = "#3288BD",
+  "Water conservation (copper)" = "#66C2A5",
+  "Copper recovery rate" = "#ABDDA4",
+  "Demand" = "#E6F598",
+  "Production rate (copper)" = "#FDAE61",
+  "Avoid fish biodiversity" = "#F46D43",
+  "All other" = "#9E0142"
+)
+
+# In-bar % label color: white on dark segments, near-black on light ones
+vi_label_col <- c(
+  "Relocate extraction" = "white",
+  "Desalinate" = "white",
+  "Water conservation (copper)" = "#222222",
+  "Copper recovery rate" = "#222222",
+  "Demand" = "#222222",
+  "Production rate (copper)" = "#222222",
+  "Avoid fish biodiversity" = "white",
+  "All other" = "white"
+)
+
+# Panel hue = the lever's color in panel a (deliberate cross-reference)
+hue_relocate <- "#5E4FA2"
+hue_desal <- "#3288BD"
+hue_copper <- "#ABDDA4"
+hue_demand <- "#E6F598"
+
+# HDR fill opacities: c(outer 66%, inner 33%)
+alpha_light <- c(0.20, 0.40)
+alpha_mid <- c(0.40, 0.60) # only used in panel b (3 scenarios)
+alpha_dark <- c(0.60, 0.80)
+
+# Least-cost reference (crosshair + star), data units (billion m3-eq, USD billion)
+# TODO(Pablo): [1] replace with computed reference, e.g. the deterministic
+# least-cost run or median(epsilon == 0 & desal == 0). Measured from mockup:
+opt <- read.csv("Results/Optimization/DemandScenario/NZE/Base_Metrics.csv")
+star_ref <- tibble(
+  x = filter(opt, Parameter == "Water impact")$Value / 1e3,
+  y = filter(opt, Parameter == "Cost")$Value / 1e3
+)
+
+# Font sizes (pt) — ggplot geom_text size is in mm, hence /.pt
+sz_title <- 11 # panel titles & letters, bold
+sz_axis <- 9 # axis text and axis titles
+sz_inplot <- 8 # scenario labels inside panels
+sz_hdr7 <- 7 # panel-a category headers, bold
+sz_bar9 <- 9 # panel-a in-bar %, bold
+
+# -----------------------------------------------------------------------------
+# 8c. PANEL A — HORIZONTAL STACKED BARS BY WATER STRESS -----------------------
+# -----------------------------------------------------------------------------
+
+# [2] Relabel of the existing 3 impact bins (design decision, same data)
+shap_stress <- shap_3cat %>%
+  mutate(
+    stress_level = case_when(
+      water_impact_B < 3000 ~ "Low",
+      water_impact_B <= 6000 ~ "Mid",
+      water_impact_B > 6000 ~ "High"
+    ),
+    # first level plots at the BOTTOM of a discrete y axis -> High on top
+    stress_level = factor(stress_level, levels = c("Low", "Mid", "High"))
+  )
+
+vi_stress_display <- shap_stress %>%
+  pivot_longer(all_of(lgbm_features), names_to = "feature", values_to = "shap_val") %>%
+  group_by(stress_level, feature) %>%
+  summarise(mean_abs_shap = mean(abs(shap_val), na.rm = TRUE), .groups = "drop") %>%
+  group_by(stress_level) %>%
+  mutate(importance = mean_abs_shap / sum(mean_abs_shap)) %>%
+  ungroup() %>%
+  mutate(
+    feature_plot = if_else(feature %in% top_shap_lgbm, feature, "Other"),
+    display_name = case_when(
+      feature_plot == "epsilon" ~ "Relocate extraction",
+      feature_plot == "desal" ~ "Desalinate",
+      feature_plot == "water_Copper" ~ "Water conservation (copper)",
+      feature_plot == "recovery_Copper" ~ "Copper recovery rate",
+      feature_plot == "demand_level" ~ "Demand",
+      feature_plot == "depletion_Copper" ~ "Production rate (copper)",
+      feature_plot %in% c("fish", "fish_threshold") ~ "Avoid fish biodiversity",
+      TRUE ~ "All other" # folds opex_Copper, recovery_Lithium, Other
+    )
+  ) %>%
+  group_by(stress_level, display_name) %>%
+  summarise(importance = sum(importance), .groups = "drop") %>%
+  group_by(stress_level) %>%
+  mutate(importance = importance / sum(importance)) %>%
+  ungroup() %>%
+  mutate(display_name = factor(display_name, levels = vi_display_order))
+
+write_csv(vi_stress_display, "Figures/Data_Figures/Fig4a_water_shap_stress.csv")
+
+# Segment midpoints (proportion units) for in-bar % labels — all 8 labeled per row
+vi_bar_labels <- vi_stress_display %>%
+  arrange(stress_level, display_name) %>%
+  group_by(stress_level) %>%
+  mutate(
+    xmax = cumsum(importance),
+    xmin = lag(xmax, default = 0),
+    xmid = (xmax + xmin) / 2,
+    lab = percent(importance, accuracy = 1),
+    col = vi_label_col[as.character(display_name)]
+  ) %>%
+  ungroup()
+
+# Category headers above the top bar, two staggered rows (positions converted
+# from mockup page coords to x-proportion; row 1 = upper, row 2 = lower)  # TUNE
+vi_headers <- tribble(
+  ~x    , ~row , ~label                         ,
+  0.149 ,    2 , "Relocate extraction"          ,
+  0.363 ,    2 , "Desalinate"                   ,
+  0.473 ,    1 , "Water conservation\n(copper)" ,
+  0.641 ,    1 , "Copper recovery\nrate"        ,
+  0.740 ,    2 , "Demand"                       ,
+  0.758 ,    1 , "Production rate\n(copper)"    ,
+  0.872 ,    1 , "Avoid fish\nbiodiversity"     ,
+  0.975 ,    2 , "All other"
+) %>%
+  mutate(y = if_else(row == 1, 4.05, 3.6)) # TUNE
+# header colors, explicit and in the same row order as the tribble above
+vi_headers$color <- unname(vi_colors[c(
+  "Relocate extraction",
+  "Desalinate",
+  "Water conservation (copper)",
+  "Copper recovery rate",
+  "Demand",
+  "Production rate (copper)",
+  "Avoid fish biodiversity",
+  "All other"
+)])
+
+p_vi_stress <- ggplot(vi_stress_display, aes(y = stress_level, x = importance, fill = display_name)) +
+  # white gaps between segments and between bars
+  geom_col(position = position_fill(reverse = TRUE), color = "white", linewidth = 0.5, width = 0.72) +
+  # NOTE: if segment order appears mirrored (Relocate on the right), drop reverse = TRUE
+  geom_text(
+    data = vi_bar_labels,
+    aes(x = xmid, y = stress_level, label = lab, color = I(col)),
+    size = sz_bar9 / .pt, fontface = "bold", show.legend = FALSE
+  ) +
+  # colored category headers above the top bar
+  geom_text(
+    data = vi_headers,
+    aes(x = x, y = y, label = label, color = I(color)),
+    inherit.aes = FALSE, size = sz_hdr7 / .pt, fontface = "bold",
+    lineheight = 0.85, show.legend = FALSE
+  ) +
+  # panel letter, top-left
+  annotate(
+    "text",
+    x = 0.005,
+    y = 4.1,
+    label = "a",
+    hjust = 0,
+    fontface = "bold",
+    size = sz_title / .pt,
+    colour = "black"
+  ) + # TUNE
+  # vertical double-headed arrow next to High/Low axis labels
+  annotate(
+    "segment",
+    x = -0.055,
+    xend = -0.055,
+    y = 1.35,
+    yend = 2.65,
+    arrow = arrow(ends = "both", length = unit(1.6, "mm"), type = "closed"),
+    linewidth = 0.4,
+    colour = "#222222"
+  ) + # TUNE
+  scale_fill_manual(values = vi_colors) +
+  scale_x_continuous(labels = c("0", "20%", "40%", "60%", "80%", "100%"), breaks = seq(0, 1, 0.2), name = NULL, ) +
+  scale_y_discrete(labels = c("Low", "", "High"), name = "Water stress") +
+  coord_cartesian(xlim = c(0, 1), clip = "off", expand = FALSE, ylim = c(0.5, 4.5)) +
+  labs(title = "Variable importance") +
+  theme_pb_large() +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(size = sz_title, face = "bold", colour = "#222222", hjust = 0.5),
+    axis.text = element_text(size = sz_axis),
+    axis.title.y = element_text(size = sz_axis, hjust = 0.3),
+    axis.ticks.y = element_blank(),
+    panel.grid = element_blank(),
+    # room for headers above and the arrow at left
+    plot.margin = margin(t = 14, r = 6, b = 2, l = 14, unit = "pt") # TUNE
+  )
+
+p_vi_stress
+
+# -----------------------------------------------------------------------------
+# 10b. REDESIGNED HDR PANELS b–e ----------------------------------------------
+#   Single hue per panel; scenarios via fill-opacity (66% outer / 33% inner);
+#   no strokes; crosshair through least-cost star; open white median circles;
+#   short in-plot labels at positions converted from the mockup.
+# -----------------------------------------------------------------------------
+
+style_bivariate_v2 <- list(
+  scale_x_continuous(labels = function(x) ifelse(x %% 3000 == 0, comma(x / 1e3), ""), breaks = 0:9 * 1e3),
+  scale_y_continuous(labels = function(x) ifelse(x %% 3000 == 0, comma(x / 1e3), ""), breaks = 3:9 * 1e3),
+  coord_cartesian(xlim = X_LIM_BI, ylim = Y_LIM_BI, expand = FALSE, clip = "off"),
+  labs(x = "Total stress-weighted water use 2025-2050\n(trillion m³-eq)", y = "Total cost 2025-2050 ($T)"),
+  theme_pb_large(),
+  theme(
+    legend.position = "none",
+    plot.title = element_text(size = sz_title, face = "bold", colour = "#222222", hjust = 0.5),
+    axis.text = element_text(size = sz_axis, lineheight = 0.1),
+    axis.title = element_text(size = sz_axis),
+    axis.title.x = element_text(size = sz_axis, hjust = 0.6),
+  )
+)
+
+# One scenario = two nested HDR layers, fixed fill + fixed alpha, no outline.
+# Draw order in `alphas` must be light -> dark (overlaps composite correctly).
+hdr_layers <- function(data, cats, hue, alphas) {
+  layers <- list()
+  for (i in seq_along(cats)) {
+    d <- filter(data, cat == cats[i])
+    layers <- c(
+      layers,
+      list(
+        geom_hdr(data = d, probs = 0.66, fill = hue, color = NA, alpha = alphas[[i]][1]),
+        geom_hdr(data = d, probs = 0.33, fill = hue, color = NA, alpha = alphas[[i]][2])
+      )
+    )
+  }
+  layers
+}
+
+make_hdr_panel_v2 <- function(data, cats, hue, alphas, medians, labels_df, title, letter) {
+  ggplot(data, aes(x = water_impact_B, y = cost_B)) +
+    hdr_layers(data, cats, hue, alphas) +
+    # crosshair through least-cost reference (above fills, below points/labels)
+    geom_vline(xintercept = star_ref$x, linewidth = 0.25, colour = "#222222") +
+    geom_hline(yintercept = star_ref$y, linewidth = 0.25, colour = "#222222") +
+    # least-cost star (unicode glyph; if font lacks it, swap to shape = 8)
+    annotate("text", x = star_ref$x, y = star_ref$y, label = "\u2605", size = 4.2, colour = "#989898") +
+    # open white median circles
+    geom_point(data = medians, aes(x = x, y = y), inherit.aes = FALSE,
+               shape = 21, fill = NA, colour = "white", size = 2.1, stroke = 0.9) +
+    # short scenario labels (color per row via I())
+    geom_text(data = labels_df, aes(x = x, y = y, label = label, color = I(col)),
+              inherit.aes = FALSE, size = sz_inplot / .pt, show.legend = FALSE) +
+    # panel letter, top-right
+    annotate(
+      "text",
+      x = Inf,
+      y = Inf,
+      label = letter,
+      hjust = 1.3,
+      vjust = 1.2,
+      fontface = "bold",
+      size = sz_title / .pt,
+      colour = "black"
+    ) +
+    labs(title = title) +
+    style_bivariate_v2
+}
+
+## --- scenario category strings (must match data_bi* exactly) -----------------
+cat_b <- c("Cost\nOptimal", "+5% Cost\nIncrease", "+25%") # light -> dark
+cat_c <- c("No desalination", "Desalination")
+cat_d <- c("Low recovery,\nHigh water", "High recovery,\nLow water")
+cat_e <- c("Demand\n>1,100 Mt", "Demand\n<1,000 Mt")
+
+## --- in-plot labels (positions converted from mockup; data units) ------------
+lab_b <- tibble(
+  x = c(1680, 2860, 4670, 7710),
+  y = c(4870, 4030, 3800, 3130),
+  label = c("+25%", "+5%", "0%", "Least cost"),
+  col = c("white", "white", "white", "#989898")
+)
+lab_c <- tibble(x = c(4770, 2850), y = c(5460, 3750), label = c("No", "Yes"), col = c("white", "white"))
+lab_d <- tibble(x = c(5430, 2300), y = c(6040, 3410), label = c("Worst", "Best"), col = c("#7FA177", "#7FA177"))
+lab_e <- tibble(x = c(5170, 2050), y = c(6030, 3280), label = c(">1100 Mt", "<1000 Mt"), col = c("#ABAD5D", "#ABAD5D"))
+
+## --- panels: new order b Relocate, c Desalinate, d Copper recovery, e Demand -
+p_hdr_b2 <- make_hdr_panel_v2(
+  data_bi2,
+  cat_b,
+  hue_relocate,
+  list(alpha_light, alpha_mid, alpha_dark),
+  med_bi2,
+  lab_b,
+  "Relocate",
+  "b"
+) +
+  # mini HDR legend, top-left of panel b only (two concentric outlines)   # TUNE
+  annotate(
+    "path",
+    x = 1020 + 950 * cos(seq(0, 2 * pi, length.out = 80)),
+    y = 8000 + 500 * sin(seq(0, 2 * pi, length.out = 80)),
+    colour = "black",
+    linewidth = 0.3
+  ) +
+  annotate(
+    "path",
+    x = 720 + 420 * cos(seq(0, 2 * pi, length.out = 80)),
+    y = 8000 + 340 * sin(seq(0, 2 * pi, length.out = 80)),
+    colour = "black",
+    linewidth = 0.3
+  ) +
+  annotate("text", x = 700, y = 8000, label = "33%", size = 6 / .pt, colour = "black") +
+  annotate("text", x = 1200, y = 8000, label = "66%", size = 6 / .pt, colour = "black", hjust = 0)
+
+p_hdr_c2 <- make_hdr_panel_v2(
+  data_bi3,
+  cat_c,
+  hue_desal,
+  list(alpha_light, alpha_dark),
+  med_bi3,
+  lab_c,
+  "Desalinate",
+  "c"
+)
+p_hdr_d2 <- make_hdr_panel_v2(
+  data_bi4,
+  cat_d,
+  hue_copper,
+  list(alpha_light, alpha_dark),
+  med_bi4,
+  lab_d,
+  "Increase copper recovery",
+  "d"
+)
+p_hdr_e2 <- make_hdr_panel_v2(
+  data_bi1,
+  cat_e,
+  hue_demand,
+  list(alpha_light, alpha_dark),
+  med_bi1,
+  lab_e,
+  "Reduce demand",
+  "e"
+)
+
+# -----------------------------------------------------------------------------
+# FINAL ASSEMBLY — full-width panel a over 2x2 grid; panel f dropped -----------
+# Page = 13.6 x 17.9 cm (1.5-column width), row heights measured from mockup
+# -----------------------------------------------------------------------------
+
+p_fig4_v2 <- p_vi_stress /
+  (p_hdr_b2 | p_hdr_c2) /
+  (p_hdr_d2 | p_hdr_e2) +
+  plot_layout(heights = c(1, 1.8, 1.8)) &
+  theme(
+    plot.background = element_rect(fill = "transparent", color = NA),
+    panel.background = element_rect(fill = "transparent", color = NA)
+  )
+
+ggsave("Figures/Figure4.png", p_fig4_v2, units = "cm", dpi = 600, width = 13.6, height = 17.9)
+ggsave("Figures/Figure4.svg", p_fig4_v2, units = "cm", dpi = 600, width = 13.6, height = 17.9)
+clean_svg("Figures/Figure4.svg")
 
 # =============================================================================
 # FIGURE 4 SI — COBALT SLACK --------------------------------------------------
@@ -912,7 +1322,7 @@ plot_data_co <- shap_bins_co |>
   summarise(importance = sum(importance), .groups = "drop") |>
   mutate(display_name = factor(display_name, levels = rev(cobalt_display_names)))
 
-write_csv(plot_data_co, "Figures/Data_Figures/Fig4c9b_cobalt_shap.csv")
+# Note: feeds the cobalt SI figure (Figures/ExtData-Figures/Figure4_cobalt.png), not saved.
 
 label_data_co <- plot_data_co |>
   filter(bin_center == 7.5) |>
@@ -980,7 +1390,7 @@ data_co1 <- data_cobalt |>
       TRUE ~ NA_character_
     )
   )
-write_csv(data_co1, "Figures/Data_Figures/Fig4c9b1_cobalt_demand.csv")
+# Note: feeds the cobalt SI figure (Figures/ExtData-Figures/Figure4_cobalt.png), not saved.
 # mutate(
 #   cat = case_when(
 #     mineral_demand < 1000 & share_LFP < 0.7 ~ "Low demand, Low LFP",
@@ -1038,7 +1448,7 @@ data_co2 <- data_cobalt |>
     )
   ) |>
   filter(!is.na(cat))
-write_csv(data_co2, "Figures/Data_Figures/Fig4c9b2_cobalt_fish.csv")
+# Note: feeds the cobalt SI figure (Figures/ExtData-Figures/Figure4_cobalt.png), not saved.
 lbl_co2 <- data_co2 |>
   group_by(cat) |>
   summarise(
@@ -1067,7 +1477,7 @@ p_co_fish
 
 ## --- Panel 3: Desalination  --------------------------------------
 data_co3 <- data_cobalt |> mutate(cat = case_when(desal == 1 ~ "Desalination", TRUE ~ "No Desalination"))
-write_csv(data_co3, "Figures/Data_Figures/Fig4c9b3_cobalt_desal.csv")
+# Note: feeds the cobalt SI figure (Figures/ExtData-Figures/Figure4_cobalt.png), not saved.
 lbl_co3 <- data_co3 |>
   group_by(cat) |>
   summarise(
@@ -1104,7 +1514,7 @@ data_co4 <- data_cobalt |>
       TRUE ~ "NA"
     )
   )
-write_csv(data_co4, "Figures/Data_Figures/Fig4c9b4_cobalt_co_recovery.csv")
+# Note: feeds the cobalt SI figure (Figures/ExtData-Figures/Figure4_cobalt.png), not saved.
 lbl_co4 <- data_co4 |>
   group_by(cat) |>
   summarise(
