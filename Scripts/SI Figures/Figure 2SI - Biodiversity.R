@@ -524,7 +524,7 @@ p_cf
 
 ggsave("Figures/Test_FigurePanels/Fig2SI_cf_MineralByProtectionLevel.png", p_cf, units = "cm", dpi = 600, width = 17, height = 12)
 ggsave("Figures/Test_FigurePanels/Fig2SI_cf_MineralByProtectionLevel.svg", p_cf, units = "cm", dpi = 600, width = 17, height = 12)
-clean_svg("Figures/Test_FigurePanels/Fig2SI_cf_MineralByProtectionLevel.svg")
+group_svg_layers("Figures/Test_FigurePanels/Fig2SI_cf_MineralByProtectionLevel.svg")
 
 # ============================================================
 # ASSEMBLE FIGURE ---------------------------------------
@@ -546,6 +546,6 @@ fig2_si
 
 ggsave("Figures/Figure2_SI_Biodiversity.png", fig2_si, units = "cm", dpi = 600, width = 17, height = 23)
 ggsave("Figures/Figure2_SI_Biodiversity.svg", fig2_si, units = "cm", dpi = 600, width = 17, height = 23)
-clean_svg("Figures/Figure2_SI_Biodiversity.svg")
+group_svg_layers("Figures/Figure2_SI_Biodiversity.svg")
 
 # EoF

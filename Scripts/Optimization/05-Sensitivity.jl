@@ -19,7 +19,19 @@ demandAll = DataFrame(CSV.File("Parameters/IEA_Demand.csv"))
 include("LoadSampleFunction.jl")
 
 # Run specific samples not run on SLURM batch job for any reason
-for sample_id in [6838,6932,6885]
+for sample_id in vcat(
+    9442:9450,
+    9498:9500,
+    9595:9600,
+    9639:9650,
+    9690:9700,
+    9739:9750,
+    9788:9800,
+    9838:9850,
+    9889:9900,
+    9932:9950,
+    9981:10000,
+)
     println("\n========================================")
     println("Running sample $sample_id / 10")
     println("========================================")

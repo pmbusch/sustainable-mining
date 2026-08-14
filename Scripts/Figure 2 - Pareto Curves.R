@@ -197,6 +197,7 @@ bands_a <- purrr::map_dfr(seq_len(length(scens_a) - 1), function(i) {
   )
 })
 
+
 data_fig_a <- df_demand |> filter(Scenario %in% c("APS", "SPS", "NZE"))
 df_close_a <- df_close_a |> filter(Scenario %in% c("APS", "SPS", "NZE"))
 df_close_a2 <- df_close_a2 |> filter(Scenario %in% c("APS", "SPS", "NZE"))
@@ -214,15 +215,19 @@ ylim_a_full <- c(min(data_fig_a$Cost) * 0.95, max(data_fig_a$Cost) * 1.05)
 arrow_dx <- 0.15 * diff(xlim_a_full)
 arrow_dy <- 0.15 * diff(ylim_a_full)
 x_lwf <- xlim_a_full[1] + 0.5 * diff(xlim_a_full)
-y_lwf <- ylim_a_full[1] + 0.8 * diff(ylim_a_full)
-x_hc <- xlim_a_full[1] + 0.12 * diff(xlim_a_full)
-y_hc0 <- ylim_a_full[1] + 0.5 * diff(ylim_a_full)
+y_lwf <- ylim_a_full[1] + 0.9 * diff(ylim_a_full)
+x_hc <- xlim_a_full[1] + 0.05 * diff(xlim_a_full)
+y_hc0 <- ylim_a_full[1] + 0.8 * diff(ylim_a_full)
 
 label_text_scen <- label_text + 6 # scenario labels, bold and considerably bigger
 
-# Desalination reference points/labels are shown only for the NZE curve
-df_close_a_panel <- df_close_a |> filter(Scenario == "NZE")
-df_close_a2_panel <- df_close_a2 |> filter(Scenario == "NZE")
+# Desalination reference labels are shown only for the NZE curve
+df_close_a_panel <- df_close_a
+df_close_a2_panel <- df_close_a2
+
+df_close_a_panel_text <- df_close_a |> filter(Scenario == "NZE")
+df_close_a2_panel_text <- df_close_a2 |> filter(Scenario == "NZE")
+
 
 p_a <- ggplot(data_fig_a, aes(Water_Impact, Cost, col = Scenario)) +
   geom_polygon(
@@ -255,7 +260,7 @@ p_a <- ggplot(data_fig_a, aes(Water_Impact, Cost, col = Scenario)) +
   # Guide lines only span from the axes to the optimal point (not across the whole panel)
   geom_segment(
     data = df_opt_a,
-    aes(x = Water_Impact, xend = Water_Impact, y = 0, yend = Cost),
+    aes(x = Water_Impact, xend = Water_Impact, y = ylim_a_full[1], yend = Cost),
     inherit.aes = FALSE,
     linetype = "dashed",
     col = "#999999",
@@ -263,7 +268,7 @@ p_a <- ggplot(data_fig_a, aes(Water_Impact, Cost, col = Scenario)) +
   ) +
   geom_segment(
     data = df_opt_a,
-    aes(x = 0, xend = Water_Impact, y = Cost, yend = Cost),
+    aes(x = xlim_a_full[1], xend = Water_Impact, y = Cost, yend = Cost),
     inherit.aes = FALSE,
     linetype = "dashed",
     col = "#999999",
@@ -273,7 +278,7 @@ p_a <- ggplot(data_fig_a, aes(Water_Impact, Cost, col = Scenario)) +
   geom_text(
     data = filter(data_fig_a, metric == "0%"),
     aes(label = scen_name),
-    nudge_y = 60 * c(1.5, -2, 2),
+    nudge_y = 60 * c(1.5, 2, 2),
     nudge_x = 500 * c(-1, -2.1, -1),
     size = label_text_scen * 5 / 14 * 0.8,
     fontface = "bold",
@@ -291,9 +296,9 @@ p_a <- ggplot(data_fig_a, aes(Water_Impact, Cost, col = Scenario)) +
   ) +
   geom_point(data = df_close_a_panel, shape = 21, fill = "white", color = "black", size = 2, stroke = 0.4) +
   # fmt: skip
-  annotate("text", x = df_close_a_panel$Water_Impact, y = ylim_a_full[1] + 0.04 * diff(ylim_a_full),
-    label = paste0("'Desalination ", desalination_cost * 100, "¢/m'^3"),
-    color = "black", size = label_text * 5 / 14 * 0.8, parse = TRUE, hjust = 0.5, angle = -20) +
+  annotate("text", x = df_close_a_panel_text$Water_Impact, y = df_close_a_panel_text$Cost-200,
+    label = paste0("Desalination\n", desalination_cost * 100, "¢/m\u00B3"),
+     color = "black", size = label_text * 5 / 14 * 0.8, hjust = 0.5, angle = -30) +
   # Desalination reference (NZE curve only): $0.25/m3 (red-filled point)
   geom_segment(
     data = df_close_a2_panel,
@@ -305,9 +310,9 @@ p_a <- ggplot(data_fig_a, aes(Water_Impact, Cost, col = Scenario)) +
   ) +
   geom_point(data = df_close_a2_panel, shape = 21, fill = "#f72f26", color = "black", size = 2, stroke = 0.4) +
   # fmt: skip
-  annotate("text", x = df_close_a2_panel$Water_Impact, y = ylim_a_full[1] + 0.09 * diff(ylim_a_full),
-    label = paste0("'Desalination ", desalination_cost2 * 100, "¢/m'^3"),
-    color = "#f72f26", size = label_text * 5 / 14 * 0.8, parse = TRUE, hjust = 0.5, angle = -20) +
+  annotate("text", x = df_close_a2_panel_text$Water_Impact, y =  df_close_a2_panel_text$Cost-200,
+     label = paste0("Desalination\n", desalination_cost2 * 100, "¢/m\u00B3"),
+     color = "black", size = label_text * 5 / 14 * 0.8, hjust = 0.5, angle = -20) +
   # fmt: skip
   annotate("text", x = df_opt_a$Water_Impact - 0.02 * diff(xlim_a_full), y = df_opt_a$Cost - 0.03 * diff(ylim_a_full),
     label = "Least cost", col = "#666666", size = label_text * 5 / 14 * 0.8, hjust = 1, vjust = 1, angle = 0) +
@@ -321,16 +326,16 @@ p_a <- ggplot(data_fig_a, aes(Water_Impact, Cost, col = Scenario)) +
     xend = x_lwf,
     yend = y_lwf,
     arrow = arrow(length = unit(0.15, "cm")),
-    linewidth = 0.6
+    linewidth = 1
   ) +
   annotate(
     "text",
     x = x_lwf + arrow_dx * 1.05,
-    y = y_lwf + 0.02 * diff(ylim_a_full),
-    label = "Less water footprint",
+    y = y_lwf,
+    label = "Lower water stress",
     col = "black",
     size = (label_text + 2) * 5 / 14 * 0.8,
-    hjust = 1
+    hjust = 0
   ) +
   annotate(
     "segment",
@@ -345,12 +350,12 @@ p_a <- ggplot(data_fig_a, aes(Water_Impact, Cost, col = Scenario)) +
   annotate(
     "text",
     x = x_hc + 0.015 * diff(xlim_a_full),
-    y = y_hc0 + arrow_dy * 0.5,
+    y = y_hc0,
     label = "Higher cost",
     col = "black",
     size = (label_text + 2) * 5 / 14 * 0.8,
-    angle = 90,
-    vjust = 0
+    angle = 0,
+    vjust = 1
   ) +
   labs(
     x = expression("Total stress-weighted water use 2025-2050 (trillion " ~ m^3 * "-eq)"),
@@ -595,6 +600,7 @@ p_b <- ggplot(data_fig_b, aes(y = Row, x = Share, fill = Mineral)) +
     aes(x = mid_share, y = Row, label = scales::percent(Share, accuracy = 1)),
     inherit.aes = FALSE,
     color = "black",
+    fontface="bold",
     size = label_text * 5 / 14 * 0.8
   ) +
   geom_text(
@@ -653,11 +659,10 @@ df_opt_cf <- data_fig_cf |> filter(Scenario == "NZE", metric == "0%")
 
 cf_scen_labels <- c(NZE = "Net-zero", APS = "Pledges", SPS = "Current policies")
 
-ylim_cf <- list(Copper = c(2, 4), Lithium = c(10, 20), Nickel = c(5, 10), Cobalt = c(8, 12)) # $/kg
+ylim_cf <- list(Copper = c(2, 4), Lithium = c(13, 20), Nickel = c(5, 10), Cobalt = c(8, 12)) # $/kg
 
 make_panel_cf <- function(
   mineral_name,
-  panel_letter,
   label_scenarios = FALSE,
   label_hjust = c(NZE = 0.15, APS = 0.5, SPS = 0.82),
   panel_accur_x = 1,
@@ -687,23 +692,12 @@ make_panel_cf <- function(
 
   p +
     geom_text(data = opt, label = "★", col = "#666666", size = 3.2) +
-    annotate(
-      "text",
-      x = Inf,
-      y = Inf,
-      label = panel_letter,
-      hjust = 1.8,
-      vjust = 1.8,
-      fontface = "bold",
-      size = 14 * 5 / 14 * 0.8,
-      colour = "black"
-    ) +
     labs(
       x = "Stress-weighted water use intensity\n(m³-eq/kg metal)",
       y = "Unit cost ($/kg metal)",
       title = mineral_name
     ) +
-    scale_y_continuous(labels = dollar_format(accuracy = panel_accur_y, prefix = "$")) +
+    scale_y_continuous(labels = dollar_format(accuracy = panel_accur_y, prefix = "$"), expand = expansion(0, 0)) +
     scale_x_continuous(labels = scales::label_comma(accuracy = panel_accur_x)) +
     coord_cartesian(ylim = ylim_cf[[mineral_name]]) +
     guides(color = "none") +
@@ -716,10 +710,18 @@ make_panel_cf <- function(
     )
 }
 
-p_c <- make_panel_cf("Copper", "c", label_scenarios = TRUE, panel_accur_y = 0.1)
-p_d <- make_panel_cf("Lithium", "d")
-p_e <- make_panel_cf("Nickel", "e", panel_accur_x = 0.1)
-p_f <- make_panel_cf("Cobalt", "f") +
+p_c <- make_panel_cf("Copper", label_scenarios = TRUE, panel_accur_y = 0.1) +
+  # fmt: skip
+  annotate("text",x = Inf,y = Inf,label = "c",hjust = 1.8,vjust = 1.8,fontface = "bold",size = 14 * 5 / 14 * 0.8,colour = "black")
+p_d <- make_panel_cf("Lithium") +
+  # fmt: skip
+  annotate("text",x = Inf,y = Inf,label = "d",hjust = 1.8,vjust = 1.8,fontface = "bold",size = 14 * 5 / 14 * 0.8,colour = "black")
+p_e <- make_panel_cf("Nickel", panel_accur_x = 0.1) +
+  # fmt: skip
+  annotate("text",x = Inf,y = Inf,label = "e",hjust = 1.8,vjust = 1.8,fontface = "bold",size = 14 * 5 / 14 * 0.8,colour = "black")
+p_f <- make_panel_cf("Cobalt", ) +
+  # fmt: skip
+  annotate("text",x = Inf,y = -Inf,label = "f",hjust = 1.8,vjust = -1,fontface = "bold",size = 14 * 5 / 14 * 0.8,colour = "black") +
   scale_x_continuous(labels = scales::label_comma(accuracy = 0.01), breaks = c(0.55, 0.6, 0.65))
 
 
@@ -731,7 +733,7 @@ p_cf
 ggsave("Figures/Test_FigurePanels/Fig2cf_MineralByDemandScenario.png", p_cf, units = 'cm', dpi = 600, width = 17, height = 12)
 # fmt: skip
 ggsave("Figures/Test_FigurePanels/Fig2cf_MineralByDemandScenario.svg", p_cf, units = 'cm', dpi = 600, width = 17, height = 12)
-clean_svg("Figures/Test_FigurePanels/Fig2cf_MineralByDemandScenario.svg")
+group_svg_layers("Figures/Test_FigurePanels/Fig2cf_MineralByDemandScenario.svg")
 
 # ============================================================
 # ASSEMBLE FIGURE ---------------------------------------
@@ -742,7 +744,7 @@ library(patchwork)
 p_a_fig <- p_a + annotate("text", x = Inf, y = Inf, label = "a", hjust = 1.8, vjust = 1.8, fontface = "bold", size = 14 * 5 / 14 * 0.8, colour = "black") +
   theme(plot.margin = margin(0.1, 0.1, 0, 0.1, "cm"))
 # fmt: skip
-p_b_fig <- p_b + annotate("text", x = Inf, y = Inf, label = "b", hjust = 1.8, vjust = 1.8, fontface = "bold", size = 14 * 5 / 14 * 0.8, colour = "black") +
+p_b_fig <- p_b + annotate("text", x = -Inf, y = Inf, label = "b", hjust = -1, vjust = 1.8, fontface = "bold", size = 14 * 5 / 14 * 0.8, colour = "black") +
   theme(plot.margin = margin(0.1, 0.1, 0, 0.1, "cm"))
 
 fig2 <- p_a_fig /
@@ -757,6 +759,6 @@ fig2
 
 ggsave("Figures/Figure2.png", fig2, units = "cm", dpi = 600, width = 17, height = 23)
 ggsave("Figures/Figure2.svg", fig2, units = "cm", dpi = 600, width = 17, height = 23)
-clean_svg("Figures/Figure2.svg")
+group_svg_layers("Figures/Figure2.svg")
 
 # EoF

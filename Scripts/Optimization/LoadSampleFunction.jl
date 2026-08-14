@@ -16,9 +16,12 @@
 #   CSV, DataFrames  (already used in Optimization_Multi.jl)
 #
 # File paths (adjust to project structure):
-#   PATH_SAMPLES  — lhs_samples.csv produced by lhs_sampling.R
-#   PATH_DEMAND   — Parameters/IEA_Demand.csv
-#   PATH_DEPOSIT  — deposit database CSV
+#   PATH_SAMPLES            — lhs_samples.csv produced by lhs_sampling.R
+#   PATH_DEMAND             — Parameters/IEA_Demand.csv
+#   PATH_DEPOSIT            — deposit database CSV
+#   PATH_AWARE_STOCHASTIC   — Parameters/AWARE_Stochastic_CFs/draw_####.csv, one file
+#                             per stochastic AWARE2.0 CF ensemble member, produced by
+#                             Scripts/Inputs-Water/04-AWARE_Stochastic.R
 # =============================================================================
 
 using CSV
@@ -30,6 +33,7 @@ using Statistics
 # -----------------------------------------------------------------------------
 
 const PATH_SAMPLES = "Parameters/samples.csv"
+const PATH_AWARE_STOCHASTIC = "Parameters/AWARE_Stochastic_CFs"
 
 # Scenario order in IEA_Demand.csv — low to high
 const SCENARIOS = ["SPS", "APS", "NZE"]
@@ -59,6 +63,22 @@ const DEPOSIT_PARAMS = Dict(
 
 # Load things once, to avoid repeated load in every run
 samples = CSV.read(PATH_SAMPLES, DataFrame)
+
+# Cache of stochastic AWARE CF draws already loaded this batch (Basin_ID => aware_cf),
+# keyed by draw index, so a repeated draw within a batch isn't re-read from disk
+const AWARE_CF_CACHE = Dict{Int,Dict{Int,Float64}}()
+
+function load_aware_draw(draw_id::Int)
+    if haskey(AWARE_CF_CACHE, draw_id)
+        return AWARE_CF_CACHE[draw_id]
+    end
+    path = joinpath(PATH_AWARE_STOCHASTIC, "draw_" * lpad(draw_id, 4, '0') * ".csv")
+    df = CSV.read(path, DataFrame)
+    cf_map = Dict(Int(df.Basin_ID[i]) => df.aware_cf[i] for i in 1:nrow(df))
+    AWARE_CF_CACHE[draw_id] = cf_map
+    return cf_map
+end
+
 # Extract the three scenario tables (all years present in each)
 dem_sps = filter(r -> r.Scenario == "SPS", demandAll)
 dem_aps = filter(r -> r.Scenario == "APS", demandAll)
@@ -279,6 +299,12 @@ function load_sample(sample_index::Int, deposit; save_deposit::Bool=false)
 
     # Drop helper columns before passing to optimization
     select!(deposit, Not([:primary_mineral, :mine_type_group]))
+
+    # --- 3d. AWARE CF stochastic draw -----------------------------------------
+    # Overwrite deposit-level aware_cf with this sample's drawn ensemble member
+    # (same draw index applied to every basin, per the stochastic AWARE2.0 dataset)
+    cf_map = load_aware_draw(Int(s.aware_draw))
+    deposit[!, :aware_cf] = [cf_map[Int(b)] for b in deposit.Basin_ID]
 
     # Recompute water_footprint from updated water and deposit-level aware_cf
     deposit[!, :water_footprint] = deposit[!, :aware_cf] .* deposit[!, :water]

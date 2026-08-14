@@ -25,7 +25,7 @@ file_path <- "Results/Optimization/DemandScenario"
 runs <- runs[str_detect(runs, "NZE\\/")] # NZE for now
 # runs <- runs[str_detect(runs, "FI70|none")]
 
-# Selected runs to compare
+# selected runs to compare
 runs <- c(
   "Results/Optimization/DemandScenario/NZE/Base.csv", # Reference
   "Results/Optimization/DemandScenario/NZE/Water_Eps05.csv",
@@ -138,7 +138,7 @@ prod <- opt_results |>
   ) |>
   filter(Copper + Nickel + Cobalt + Lithium > 0) |>
   ungroup() |>
-  mutate(profit = revenue)
+  mutate(profit = revenue) # Do revenue instead of profit (discounted)
 
 
 # GDP share --------------
@@ -394,7 +394,7 @@ ggplot(data_fig, aes(x = delta_water, y = delta_profit)) +
     breaks = pseudo_log_breaks(symmetric = T),
     labels = scales::label_comma()
   ) +
-  scale_size_continuous(range = c(0.1, 8), breaks = c(0.01, 0.05, 0.1, 0.2), labels = scales::percent) +
+  scale_size_continuous(range = c(0.1, 18), breaks = c(0.01, 0.05, 0.1, 0.2), labels = scales::percent) +
   scale_fill_manual(values = region_colors_broad, na.value = "#808080") +
   scale_color_manual(values = region_colors_broad, na.value = "#808080", guide = "none") +
   labs(x = "", y = "", size = "Battery Minerals\nGDP share", fill = "Region") +
@@ -417,13 +417,13 @@ ggplot(data_fig, aes(x = delta_water, y = delta_profit)) +
   )
 
 # fmt: skip
-ggsave("Figures/Figure3.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 18, height = 18)
+ggsave("Figures/Figure3.png", ggplot2::last_plot(), units = 'cm', dpi = 1000, width = 17.2, height = 18.1)
 # fmt: skip
-ggsave("Figures/Figure3.svg", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 18, height = 18)
-clean_svg("Figures/Figure3.svg")
+ggsave("Figures/Figure3.svg", ggplot2::last_plot(), units = 'cm', dpi = 1000, width = 17.2, height = 18.1)
+group_svg_layers("Figures/Figure3.svg")
 
 
-# REDESING FIG 3 ---------------------------------------
+# REDESIGN FIG 3 ---------------------------------------
 # =============================================================================
 # FIGURE 3 — REDESIGN (matches Illustrator mockup "Figure_3__Country-level_.ai")
 #
@@ -463,15 +463,20 @@ region_display <- c(
   "Latin America" = "Latin Am.",
   "North America" = "North Am.",
   "Europe" = "Europe",
-  "Asia & Oceania" = "Asia & Oceania",
-  "Middle East & Africa" = "Mideast & Africa",
+  "Asia & Oceania" = "Asia &\nOceania",
+  "Middle East & Africa" = "Mideast &\nAfrica",
   "World" = "World"
 )
 
+
 sz_title <- 11
-sz_axis <- 9
-sz_lab7 <- 7
-sz_region <- 10
+sz_axis <- 9.5
+sz_lab7 <- 7.5
+sz_region <- 9
+
+ps_t <- function(x) asinh(x / 2) / log(10)
+ps_inv <- function(z) 2 * sinh(z * log(10))
+panel_asp <- 0.95 # TUNE: rotate labels toward horizontal (raise) or vertical (lower)
 
 # Signed axis labels: -1000 -100 -10 -1 +1 +10 +100 +1000 (no $, no commas needed)
 lab_signed <- function(x) ifelse(x > 0, paste0("+", scales::comma(x, big.mark = "")), scales::comma(x, big.mark = ""))
@@ -483,10 +488,10 @@ yb_v2 <- c(-100, -10, -1, 1, 10, 100)
 # -----------------------------------------------------------------------------
 
 scen_titles_v2 <- c(
-  "bold('Cost increase (+5%)')",
-  "atop(bold('Cost increase +'), bold('protect fish biodiversity'))",
-  "atop(bold('Cost increase +'), bold('desalination 50\u00A2/'*m^3))",
-  "atop(bold('Cost increase + desalination 50\u00A2/'*m^3*' +'), bold('protect fish biodiversity'))"
+  "\nCost increase (+5%)",
+  "Cost increase +\nprotect fish biodiversity",
+  "Cost increase +\ndesalination 50\u00A2/m\u00B3",
+  "Cost increase + desalination 50\u00A2/m\u00B3 +\nprotect fish biodiversity"
 )
 
 fig3 <- data_fig |> mutate(Scenario2 = factor(scen_titles_v2[as.integer(Scenario)], levels = scen_titles_v2))
@@ -526,7 +531,7 @@ label_sets_v2 <- list(
     "Mongolia",
     "Kazakhstan",
     "Zambia",
-    "Turkey",
+    "Australia",
     "Armenia",
     "U.S.",
     "Iran"
@@ -538,13 +543,15 @@ label_sets_v2 <- list(
     "Australia",
     "Kazakhstan",
     "Mongolia",
-    "Turkey",
+    "Indonesia",
     "U.S.",
     "Armenia",
     "Iran",
     "Argentina",
     "China",
     "Canada",
+    "New Caledonia",
+    "Zimbabwe",
     "Peru",
     "Chile",
     "Brazil"
@@ -553,30 +560,30 @@ label_sets_v2 <- list(
     "Chile",
     "U.S.",
     "China",
-    "Mongolia",
-    "Russia",
+    # "Mongolia",
+    # "Russia",
     "Argentina",
     "D.R.C.",
-    "Zambia",
+    # "Zambia",
     "New Caledonia",
-    "Turkey",
     "Peru",
+    "Pakistan",
     "Australia",
     "Armenia",
     "Iran",
+    "Tanzania",
     "Mexico"
   ),
   `4` = c(
     "Chile",
     "U.S.",
-    "China",
-    "Mongolia",
-    "Russia",
+    # "China",
+    # "Mongolia",
+    # "Russia",
     "D.R.C.",
     "Zambia",
     "New Caledonia",
-    "Turkey",
-    "Zimbabwe",
+    # "Zimbabwe",
     "Peru",
     "Armenia",
     "Iran",
@@ -592,12 +599,37 @@ fig3_labels <- bind_rows(lapply(1:4, function(i) {
 # 4. REGION ARROW LABELS — PANEL A ONLY
 # -----------------------------------------------------------------------------
 
+label_spec <- tibble::tribble(
+  ~Region                , ~t   , ~side , ~out ,
+  "Latin America"        , 0.30 ,     1 ,    0 ,
+  "World"                , 0.80 ,    -1 ,    0 ,
+  "Europe"               , 1.00 ,     0 ,    1 ,
+  "Asia & Oceania"       , 1.00 ,     0 ,    1 ,
+  "North America"        , 0.85 ,     1 ,    0 ,
+  "Middle East & Africa" , 0.85 ,    -1 ,    0
+)
+
+# transformed half-ranges, straight from the data (axes are symmetric)
+mx <- max(abs(ps_t(fig3$delta_water)), na.rm = TRUE)
+my <- max(abs(ps_t(fig3$delta_profit)), na.rm = TRUE)
+
 region_lab_a <- region_agg2 |>
   filter(as.integer(Scenario) == 1) |>
+  left_join(label_spec, by = "Region") |>
   mutate(
     display = region_display[Region],
-    # above/below the arrow — reuse of original placement logic          # TUNE
-    label_vjust = if_else(Region %in% c("Middle East & Africa", "Europe", "World"), 1, 0)
+    xt = ps_t(water),
+    yt = ps_t(profit),
+    ux = (xt / mx) * panel_asp,
+    uy = yt / my,
+    angle_raw = atan2(uy, ux) * 180 / pi,
+    flip = abs(angle_raw) > 90,
+    angle = ifelse(flip, angle_raw - sign(angle_raw) * 180, angle_raw),
+    side2 = ifelse(flip, -side, side),
+    x = ps_inv(xt * t),
+    y = ps_inv(yt * t),
+    vjust = case_when(side2 == 1 ~ -0.4, side2 == -1 ~ 1.4, TRUE ~ 0.5),
+    hjust = case_when(out == 1 & !flip ~ -0.15, out == 1 & flip ~ 1.15, TRUE ~ 0.5)
   )
 
 # -----------------------------------------------------------------------------
@@ -630,13 +662,13 @@ legend_caption <- tibble(
 # -----------------------------------------------------------------------------
 
 p_fig3_v2 <- ggplot(fig3, aes(x = delta_water, y = delta_profit)) +
-  ggh4x::facet_wrap2(~Scenario2, labeller = label_parsed, ncol = 2, axes = "all") +
+  ggh4x::facet_wrap2(~Scenario2, ncol = 2, axes = "all") +
   # origin crosshair inside the panel
   geom_vline(xintercept = 0, col = "black", linewidth = 0.25) +
   geom_hline(yintercept = 0, col = "black", linewidth = 0.25) +
   # country bubbles: region fill at 0.5 alpha, thin near-black outline
   geom_point(aes(size = gdp_share, fill = Region),
-             alpha = 0.5, shape = 21, color = "#231F20", stroke = 0.25) +
+             alpha = 0.4, shape = 21, color = "#231F20", stroke = 0.25) +
   # region aggregate arrows: solid, thick; World thicker
   geom_segment(
     data = region_agg2 |> filter(Region != "World"),
@@ -653,13 +685,11 @@ p_fig3_v2 <- ggplot(fig3, aes(x = delta_water, y = delta_profit)) +
     inherit.aes = FALSE
   ) +
   # region names along arrows, panel a only, bold
-  geomtextpath::geom_textsegment(
+  geom_text(
     data = region_lab_a,
-    aes(x = 0, y = 0, xend = water, yend = profit, color = Region, label = display, vjust = label_vjust),
-    text_only = TRUE,
-    fontface = "bold",
-    size = sz_region / .pt,
-    hjust = 0.85, # TUNE
+    aes(x = x, y = y, label = display, colour = Region,
+        angle = angle, hjust = hjust, vjust = vjust),
+    fontface = "bold", size = sz_region / .pt, lineheight = 0.85,
     inherit.aes = FALSE
   ) +
   # curated country labels, colored by region, dark thin leader lines
@@ -703,18 +733,17 @@ p_fig3_v2 <- ggplot(fig3, aes(x = delta_water, y = delta_profit)) +
     labels = lab_signed,
     limits = function(x) c(-max(abs(x)), max(abs(x)))
   ) +
-  scale_size_continuous(range = c(0.5, 11), breaks = c(0.01, 0.05, 0.1, 0.2)) +
+  scale_size_continuous(range = c(0.5, 18), breaks = c(0.01, 0.05, 0.1, 0.2)) +
   scale_fill_manual(values = region_colors_v2, na.value = "#808080") +
   scale_color_manual(values = region_colors_v2, na.value = "#808080", guide = "none") +
   labs(x = NULL, y = NULL) +
-  # axis titles repeated on every panel (annotate() replicates across facets)
   annotate(
     "text",
-    x = -Inf,
+    x = 0,
     y = -Inf,
-    label = "Change in stress-weighted water use 2025-2050\nrel. to least cost, net-zero demand (billion m\u00B3-eq)",
-    hjust = 0,
-    vjust = 2.6,
+    label = "Change in stress-weighted water use 2025-2050\nrel. to least cost, net-zero demand\n(billion m\u00B3-eq)",
+    hjust = 0.5,
+    vjust = 1.75,
     size = sz_axis / .pt,
     lineheight = 0.9,
     colour = "black"
@@ -722,41 +751,49 @@ p_fig3_v2 <- ggplot(fig3, aes(x = delta_water, y = delta_profit)) +
   annotate(
     "text",
     x = -Inf,
-    y = -Inf,
-    label = "Change in profit 2025-2050 rel. to\nleast cost, net-zero demand ($B)",
+    y = 0,
+    label = "Change in revenue 2025-2050 rel. to\nleast cost, net-zero demand ($B)",
     angle = 90,
-    hjust = 0,
-    vjust = -1.8,
+    hjust = 0.5,
+    vjust = -1.7,
     size = sz_axis / .pt,
     lineheight = 0.9,
     colour = "black"
   ) +
-  coord_cartesian(clip = "off") +
+  coord_cartesian(clip = "off", expand = F) +
   theme_pb_large() +
   guides(fill = "none", color = "none", size = "none") +
   theme(
     strip.background = element_blank(),
-    strip.text = element_text(size = sz_title, face = "bold", colour = "black", lineheight = 0.75),
+    strip.text = element_text(
+      size = sz_title,
+      face = "bold",
+      colour = "black",
+      lineheight = 0.85,
+      margin = margin(t = 0, b = 4)
+    ),
     panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
     axis.line = element_blank(),
     axis.ticks = element_line(color = "black", linewidth = 0.5),
-    axis.ticks.length = unit(2, "pt"),
-    axis.text = element_text(size = sz_axis, colour = "black"),
+    axis.ticks.length = unit(5, "pt"),
+    axis.text = element_text(size = sz_axis - 1, colour = "black"),
     axis.title = element_blank(),
+    axis.title.x = element_text(margin = margin(t = 4)),
+    axis.title.y = element_text(margin = margin(r = 4)),
     panel.grid = element_blank(),
     panel.background = element_blank(),
     plot.background = element_rect(fill = "transparent", color = NA),
-    panel.spacing.x = unit(10, "pt"),
-    panel.spacing.y = unit(30, "pt"),
-    plot.margin = margin(t = 5, r = 5, b = 5, l = 22),
+    panel.spacing.x = unit(45, "pt"),
+    panel.spacing.y = unit(45, "pt"),
+    plot.margin = margin(t = 5, r = 16, b = 42, l = 22),
     legend.position = "none"
   )
 
 p_fig3_v2
 
-ggsave("Figures/Figure3.png", p_fig3_v2, units = "cm", dpi = 600, width = 17.2, height = 18.1)
-ggsave("Figures/Figure3.svg", p_fig3_v2, units = "cm", dpi = 600, width = 17.2, height = 18.1)
-clean_svg("Figures/Figure3.svg")
+ggsave("Figures/Figure3.png", p_fig3_v2, units = "cm", dpi = 1000, width = 17.2, height = 18.1)
+ggsave("Figures/Figure3.svg", p_fig3_v2, units = "cm", dpi = 1000, width = 17.2, height = 18.1)
+group_svg_layers("Figures/Figure3.svg")
 
 # Option B - equal size ------------------------
 
@@ -962,4 +999,4 @@ p2 +
 ggsave("Figures/Figure3_option2.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 18, height = 18)
 # fmt: skip
 ggsave("Figures/Figure3_option2.svg", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 18, height = 18)
-clean_svg("Figures/Figure3_option2.svg")
+group_svg_layers("Figures/Figure3_option2.svg")

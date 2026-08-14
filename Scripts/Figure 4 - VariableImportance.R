@@ -32,9 +32,14 @@ dim(samples)
 
 set.seed(25032026)
 
-# Feature columns: samples already includes desal and fish as 0/1 Bernoulli draws
+# Feature columns: samples already includes desal and fish as 0/1 Bernoulli draws.
+# aware_draw/aware_draw_q (raw AWARE CF ensemble index, ~5000 near-unique levels,
+# no physical ordering) are dropped in favor of aware_cf_severity — a water-
+# weighted CF summary joined in Fig4_PrepareData_Results.R that actually carries
+# learnable signal for the SHAP model (see Fig4_PrepareData_AWARE_Random.R).
 feature_cols <- names(samples)[names(samples) != "sample_id"]
-feature_cols <- c(feature_cols, "epsilon")
+feature_cols <- setdiff(feature_cols, c("aware_draw", "aware_draw_q"))
+feature_cols <- c(feature_cols, "epsilon", "aware_cf_severity")
 lgbm_features <- feature_cols
 
 # Bin parameters — water impact in billion m³
@@ -121,6 +126,7 @@ water_display_names <- c(
   "Protect fish basins",
   "Copper extraction costs",
   "Lithium recovery rate",
+  "AWARE CF uncertainty",
   "Other"
 )
 
@@ -134,6 +140,7 @@ water_colors <- c(
   "Protect fish basins" = "#1A7837", # dark green  - ecology
   "Copper extraction costs" = "#A6761D", # dark amber  - costs
   "Lithium recovery rate" = "#cab2d6",
+  "AWARE CF uncertainty" = "#C51B7D", # dark magenta - water-stress data uncertainty
   "Other" = "#525252" # dark gray
 )
 
@@ -150,6 +157,7 @@ plot_data_water <- shap_bins_lgbm %>%
       feature_plot %in% c("fish", "fish_threshold") ~ "Protect fish basins",
       feature_plot == "opex_Copper" ~ "Copper extraction costs",
       feature_plot == "recovery_Lithium" ~ "Lithium recovery rate",
+      feature_plot == "aware_cf_severity" ~ "AWARE CF uncertainty",
       TRUE ~ feature_plot
     )
   ) %>%
@@ -228,6 +236,7 @@ shap_3cat_display <- shap_3cat %>%
       feature_plot %in% c("fish", "fish_threshold") ~ "Protect fish basins",
       feature_plot == "opex_Copper" ~ "Copper extraction costs",
       feature_plot == "recovery_Lithium" ~ "Lithium recovery rate",
+      feature_plot == "aware_cf_severity" ~ "AWARE CF uncertainty",
       TRUE ~ "Other"
     )
   ) %>%
@@ -515,7 +524,7 @@ CDE
   )
 ggsave("Figures/Figure4.png", ggplot2::last_plot(), units = "cm", dpi = 600, width = 18, height = 17.4)
 ggsave("Figures/Figure4.svg", ggplot2::last_plot(), units = "cm", dpi = 600, width = 18, height = 17.4)
-clean_svg("Figures/Figure4.svg")
+group_svg_layers("Figures/Figure4.svg")
 
 
 ## Conditional density figures ---------------------------------------
@@ -799,7 +808,7 @@ ggsave("test.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 6, hei
 # fmt: skip
 ggsave("Figures/Figure4.png", ggplot2::last_plot(), units = "cm", dpi = 600, width = 18, height = 17)
 ggsave("Figures/Figure4.svg", ggplot2::last_plot(), units = "cm", dpi = 600, width = 18, height = 17)
-clean_svg("Figures/Figure4.svg")
+group_svg_layers("Figures/Figure4.svg")
 
 
 # =============================================================================
@@ -809,7 +818,7 @@ clean_svg("Figures/Figure4.svg")
 # ADDITIVE sections: paste after section 10a in Figure_4_-_VariableImportance.R
 # (or source at the end). Requires objects from the original script:
 #   shap_3cat, top_shap_lgbm, lgbm_features,
-#   data_bi1..data_bi4, med_bi1..med_bi4, theme_pb_large(), clean_svg()
+#   data_bi1..data_bi4, med_bi1..med_bi4, theme_pb_large(), group_svg_layers()
 # Original sections 8b and 10a are left untouched; panel f (data_bi5) is DROPPED.
 #
 # Design spec extracted programmatically from the .ai file (pt sizes, hex colors,
@@ -832,7 +841,11 @@ library(scales)
 # 0. SHARED DESIGN CONSTANTS (measured from mockup) -----------------------------------
 # -----------------------------------------------------------------------------
 
-# Spectral palette, 8 consolidated categories, left-to-right stacking order
+# Spectral palette, 8 consolidated categories (measured from the mockup), plus
+# AWARE CF uncertainty appended as a 9th — same magenta used in the legacy
+# water_colors palette above, for cross-panel color consistency. # TUNE: not
+# measured from the .ai mockup (added after the mockup was made); needs a
+# visual check once real SHAP results are available (see OPEN ITEMS below).
 vi_display_order <- c(
   "Relocate extraction",
   "Desalinate",
@@ -858,12 +871,12 @@ vi_colors <- c(
 # In-bar % label color: white on dark segments, near-black on light ones
 vi_label_col <- c(
   "Relocate extraction" = "white",
-  "Desalinate" = "white",
+  "Desalinate" = "#222222",
   "Water conservation (copper)" = "#222222",
   "Copper recovery rate" = "#222222",
   "Demand" = "#222222",
   "Production rate (copper)" = "#222222",
-  "Avoid fish biodiversity" = "white",
+  "Avoid fish biodiversity" = "#222222",
   "All other" = "white"
 )
 
@@ -879,7 +892,6 @@ alpha_mid <- c(0.40, 0.60) # only used in panel b (3 scenarios)
 alpha_dark <- c(0.60, 0.80)
 
 # Least-cost reference (crosshair + star), data units (billion m3-eq, USD billion)
-# TODO(Pablo): [1] replace with computed reference, e.g. the deterministic
 # least-cost run or median(epsilon == 0 & desal == 0). Measured from mockup:
 opt <- read.csv("Results/Optimization/DemandScenario/NZE/Base_Metrics.csv")
 star_ref <- tibble(
@@ -927,6 +939,7 @@ vi_stress_display <- shap_stress %>%
       feature_plot == "demand_level" ~ "Demand",
       feature_plot == "depletion_Copper" ~ "Production rate (copper)",
       feature_plot %in% c("fish", "fish_threshold") ~ "Avoid fish biodiversity",
+      feature_plot == "aware_cf_severity" ~ "AWARE CF uncertainty",
       TRUE ~ "All other" # folds opex_Copper, recovery_Lithium, Other
     )
   ) %>%
@@ -963,6 +976,7 @@ vi_headers <- tribble(
   0.740 ,    2 , "Demand"                       ,
   0.758 ,    1 , "Production rate\n(copper)"    ,
   0.872 ,    1 , "Avoid fish\nbiodiversity"     ,
+  0.920 ,    2 , "AWARE CF\nuncertainty"        , # TUNE: placeholder, see OPEN ITEMS [3]
   0.975 ,    2 , "All other"
 ) %>%
   mutate(y = if_else(row == 1, 4.05, 3.6)) # TUNE
@@ -975,6 +989,7 @@ vi_headers$color <- unname(vi_colors[c(
   "Demand",
   "Production rate (copper)",
   "Avoid fish biodiversity",
+  "AWARE CF uncertainty",
   "All other"
 )])
 
@@ -1197,7 +1212,7 @@ p_fig4_v2 <- p_vi_stress /
 
 ggsave("Figures/Figure4.png", p_fig4_v2, units = "cm", dpi = 600, width = 13.6, height = 17.9)
 ggsave("Figures/Figure4.svg", p_fig4_v2, units = "cm", dpi = 600, width = 13.6, height = 17.9)
-clean_svg("Figures/Figure4.svg")
+group_svg_layers("Figures/Figure4.svg")
 
 # =============================================================================
 # FIGURE 4 SI — COBALT SLACK --------------------------------------------------
@@ -1286,6 +1301,7 @@ cobalt_display_names <- c(
   "Nickel recovery",
   "Share LFP battery chemistry",
   "Max production rate nickel",
+  "AWARE CF uncertainty",
   "Other"
 )
 
@@ -1299,6 +1315,7 @@ cobalt_colors <- c(
   "Nickel recovery" = "#02818A", # dark teal    - nickel tech
   "Max production rate nickel" = "#D95F02", # dark orange  - Ni constraint
   "Share LFP battery chemistry" = "#4A4094", # dark violet  - battery chem
+  "AWARE CF uncertainty" = "#C51B7D", # dark magenta - water-stress data uncertainty
   "Other" = "#525252" # dark gray
 )
 
@@ -1315,6 +1332,7 @@ plot_data_co <- shap_bins_co |>
       feature_plot == "recovery_Nickel" ~ "Nickel recovery",
       feature_plot == "depletion_Nickel" ~ "Max production rate nickel",
       feature_plot == "share_LFP" ~ "Share LFP battery chemistry",
+      feature_plot == "aware_cf_severity" ~ "AWARE CF uncertainty",
       TRUE ~ feature_plot
     )
   ) |>
@@ -1564,4 +1582,4 @@ CDE
 ggsave("Figures/ExtData-Figures/Figure4_cobalt.png", ggplot2::last_plot(), units = "cm", dpi = 600, width = 18, height = 17.4)
 # fmt: skip
 ggsave("Figures/ExtData-Figures/Figure4_cobalt.svg", ggplot2::last_plot(), units = "cm", dpi = 600, width = 18, height = 17.4)
-clean_svg("Figures/ExtData-Figures/Figure4_cobalt.svg")
+group_svg_layers("Figures/ExtData-Figures/Figure4_cobalt.svg")

@@ -402,24 +402,45 @@ ggplot(df, aes(OPEX_ore)) +
   theme_pb_wide() +
   geom_vline(xintercept = 0, col = "red")
 
+# Semantic primary-mineral colors (Copper/Nickel/Cobalt match minerals_colors in 00a-Common Variables.R)
+ore_mineral_colors <- c(
+  "Copper" = "#66c2a5",
+  "Nickel" = "#7c7c7c",
+  "Cobalt" = "#5e4fa2",
+  "Gold" = "#C9A227", # muted gold
+  "Silver" = "#B0B0B0", # silver grey
+  "Platinum" = "#7A8B99", # steel blue-grey
+  "Palladium" = "#9E8F6D", # warm taupe/bronze
+  "Zinc" = "#4F81BD", # bluish
+  "Other" = "black" # neutral catch-all
+)
+
 # just to sort plot
-data_fig <- df |> group_by(country_agg) |> mutate(OPEX_avg = mean(OPEX_ore)) |> ungroup()
+data_fig <- df |>
+  group_by(country_agg) |>
+  mutate(OPEX_avg = mean(OPEX_ore)) |>
+  ungroup() |>
+  mutate(primary_min_agg = factor(primary_min_agg, levels = names(ore_mineral_colors)))
 
 ggplot(data_fig, aes(x = reorder(country_agg, OPEX_avg), y = OPEX_ore)) +
   geom_boxplot(aes(fill = OPEX_source), alpha = 0.8, outlier.shape = NA) +
   geom_point( data = filter(data_fig,OPEX_source == "Fitted Model"),
-  position = position_nudge(x = -0.2),aes(col=primary_min_agg), alpha=0.6) +
+  position = position_nudge(x = -0.2),aes(col=primary_min_agg), alpha=0.6, size = 1.8) +
   geom_point( data = filter(data_fig,OPEX_source != "Fitted Model"),
-  position = position_nudge(x = 0.2),aes(col=primary_min_agg), alpha=0.6) +
+  position = position_nudge(x = 0.2),aes(col=primary_min_agg), alpha=0.6, size = 1.8) +
   coord_flip(expand = F) +
   scale_y_continuous(labels = dollar_format(big.mark = " ", prefix = "$"), limits = c(0, 503)) +
   scale_fill_manual(values = c("S&P" = "#ccebc5", "Fitted Model" = "#fbb4ae")) +
-  # scico::scale_colour_scico_d(palette = "batlow") +
-  scale_colour_viridis_d(option = "D", end = 0.9) +
-  labs(y = "OPEX\n(USD per ton ore processed)", x = "", fill = "Data Source", col = "Primary Mineral of Deposit") +
-  theme_pb_wide() +
+  scale_colour_manual(values = ore_mineral_colors) +
+  labs(y = "OPEX (USD per ton ore processed)", x = "", fill = "Data Source", col = "Primary Mineral of Deposit") +
+  theme_pb_large() +
   guides(fill = guide_legend(reverse = TRUE)) +
-  theme(legend.position = c(0.8, 0.2), axis.text.x = element_text(hjust = 1))
+  theme(
+    legend.position = c(0.8, 0.2),
+    axis.text.x = element_text(hjust = 1),
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 10)
+  )
 
 # fmt: skip
 ggsave("Figures/Deposit/Ore_Opex.png", ggplot2::last_plot(),units = 'cm', dpi = 600, width = 8.7*2, height = 8.7*2)
@@ -474,52 +495,8 @@ capex <- df |>
   ) |>
   distinct(Name, .keep_all = T)
 
-p <- ggplot(capex, aes(ore_processed_K, capM, col = Continent)) +
-  geom_point(alpha=0.7) +
-  # geom_smooth(method="lm",se=F,formula="y~x") +
-  # facet_wrap(~mine_type) +
-  coord_cartesian(
-    expand = F,
-    xlim = c(0, max(capex$ore_processed_K, na.rm = T) * 1.05),
-    ylim = c(0, max(capex$capM) * 1.05)
-  ) +
-  labs(
-    x = "Production Capacity (thousand tonnes ore processed per year)",
-    y = "",
-    title = "Capital Cost (million USD)",
-    col = "Region"
-  ) +
-  scale_y_continuous(labels = dollar_format(big.mark = " ", prefix = "$")) +
-  scale_x_continuous(labels = scales::comma) +
-  scale_colour_viridis_d(option = "D", end = 0.9) +
-  geom_segment(x = 0, xend = 15000, y = 1000, yend = 1000, col = "black", linetype = "dashed", linewidth = 0.5) +
-  geom_segment(x = 15000, xend = 15000, y = 0, yend = 1000, col = "black", linetype = "dashed", linewidth = 0.5) +
-  theme_pb_wide() +
-  theme(legend.position = c(0.1, 0.8), legend.box.background = element_rect(colour = "black"))
-p
-
-# zoom version
-p_zoom <- ggplot(capex, aes(ore_processed_K, capM, col = primary_min_agg)) +
-  geom_point(alpha=0.7) +
-  coord_cartesian(expand = F, xlim = c(0, 15000), ylim = c(0, 1000)) +
-  scale_y_continuous(labels = dollar_format(big.mark = " ", prefix = "$")) +
-  scale_x_continuous(labels = scales::comma) +
-  scale_colour_viridis_d(option = "D", end = 0.9) +
-  theme_pb_wide() +
-  theme(legend.position = "none") +
-  labs(x = "", y = "")
-
-library(cowplot)
-ggdraw() + draw_plot(p) + draw_plot(p_zoom, x = 0.55, y = 0.55, width = 0.38, height = 0.38) &
-  theme(
-    plot.background = element_rect(fill = "transparent", color = NA),
-    panel.background = element_rect(fill = "transparent", color = NA)
-  )
-
-# fmt: skip
-ggsave("Figures/Deposit/Ore_CAPEX.png", ggplot2::last_plot(),units = 'cm', dpi = 600, width = 8.7*2, height = 8.7*2)
-
-# group continents, based on exploratory plot with geom_smooth they have different trends
+# Group continents to match the capex equation used to fit and predict capex data
+# (see "Linear model" fit below; exploratory geom_smooth showed different trends per group)
 capex <- capex |>
   mutate(
     continent_groups = if_else(
@@ -529,7 +506,7 @@ capex <- capex |>
     )
   )
 
-# Linear model: directly interpretable
+# Linear model: directly interpretable (fit before plotting so the fitted lines + R2 can be shown on the figure)
 mod_capex <- lm(capCost ~ ore_processed:continent_groups, data = capex)
 nobs(mod_capex) # 100
 summary(mod_capex) # R2 =0.27
@@ -556,6 +533,103 @@ base_capex_p90 <- coefs_CAPEX$capex_p90[1] / 1e3
 coefs_CAPEX[2, 2] * 1e3 # USD per tpa ore added, according to industry a reasonable range is $30-$70 per tpa
 coefs_CAPEX[3, 2] * 1e3
 
+# Region group labels for the figure legend (list included regions instead of "Group 1"/"Group 2")
+continent_group_labels <- c("Group 1" = "Asia, Europe, North America,\nSouth America", "Group 2" = "Africa, Oceania")
+continent_group_colors <- c(
+  "Asia, Europe, North America,\nSouth America" = "#4C72B0", # muted blue
+  "Africa, Oceania" = "#C1440E" # muted rust
+)
+capex <- capex |> mutate(continent_groups_label = continent_group_labels[continent_groups])
+
+# Fitted lines for the two grouped fits (capM = intercept/1e3 + slope_group * ore_processed_K)
+intercept_capex <- coefs_CAPEX$capex_est[coefs_CAPEX$continent_groups == "(Intercept)"] / 1e3
+slope_capex <- coefs_CAPEX |>
+  filter(continent_groups != "(Intercept)") |>
+  transmute(continent_groups, slope = capex_est)
+
+fit_lines_capex <- purrr::map_dfr(c("Group 1", "Group 2"), function(g) {
+  x_max_g <- max(capex$ore_processed_K[capex$continent_groups == g], na.rm = TRUE)
+  slope_g <- slope_capex$slope[slope_capex$continent_groups == g]
+  tibble(continent_groups = g, ore_processed_K = c(0, x_max_g), capM = intercept_capex + slope_g * c(0, x_max_g))
+}) |>
+  mutate(continent_groups_label = continent_group_labels[continent_groups])
+
+# 3 line groups: fitted equations (one per region group), then n, then R2 (single shared model)
+eq_ore_capex <- paste0(
+  "Asia, Europe, North America, South America: y = ",
+  round(intercept_capex, 1),
+  " + ",
+  round(slope_capex$slope[slope_capex$continent_groups == "Group 1"], 3),
+  "x\nAfrica, Oceania: y = ",
+  round(intercept_capex, 1),
+  " + ",
+  round(slope_capex$slope[slope_capex$continent_groups == "Group 2"], 3),
+  "x",
+  "\nn = ",
+  nobs(mod_capex),
+  "\nR² = ",
+  round(summary(mod_capex)$r.squared, 2)
+)
+
+p <- ggplot(capex, aes(ore_processed_K, capM, col = continent_groups_label)) +
+  geom_point(alpha = 0.7, size = 1.8) +
+  geom_line(data = fit_lines_capex, linewidth = 1.3) +
+  annotate(
+    "text",
+    x = Inf,
+    y = -Inf,
+    label = eq_ore_capex,
+    hjust = 1.02,
+    vjust = -0.15,
+    size = 10 * 5 / 14 * 0.8,
+    lineheight = 0.9,
+    colour = "black"
+  ) +
+  coord_cartesian(
+    expand = F,
+    xlim = c(0, max(capex$ore_processed_K, na.rm = T) * 1.05),
+    ylim = c(0, max(capex$capM) * 1.05)
+  ) +
+  labs(
+    x = "Production Capacity (thousand tonnes ore processed per year)",
+    y = "Capital cost (million USD)",
+    title = NULL,
+    col = "Region"
+  ) +
+  scale_y_continuous(labels = dollar_format(big.mark = " ", prefix = "$")) +
+  scale_x_continuous(labels = scales::comma) +
+  scale_colour_manual(values = continent_group_colors) +
+  geom_segment(x = 0, xend = 15000, y = 1000, yend = 1000, col = "black", linetype = "dashed", linewidth = 0.5) +
+  geom_segment(x = 15000, xend = 15000, y = 0, yend = 1000, col = "black", linetype = "dashed", linewidth = 0.5) +
+  theme_pb_large() +
+  theme(legend.position = c(0.2, 0.8), legend.box.background = element_rect(colour = "black"))
+p
+
+# zoom version
+p_zoom <- ggplot(capex, aes(ore_processed_K, capM, col = continent_groups_label)) +
+  geom_point(alpha=0.7) +
+  coord_cartesian(expand = F, xlim = c(0, 15000), ylim = c(0, 1000)) +
+  scale_y_continuous(labels = dollar_format(big.mark = " ", prefix = "$")) +
+  scale_x_continuous(labels = scales::comma) +
+  scale_colour_manual(values = continent_group_colors) +
+  theme_pb_wide() +
+  theme(legend.position = "none") +
+  labs(x = "", y = "")
+
+library(cowplot)
+ggdraw() +
+  draw_plot(p) +
+  draw_plot(p_zoom, x = 0.55, y = 0.55, width = 0.38, height = 0.38) +
+  theme(
+    plot.background = element_rect(fill = "transparent", color = NA),
+    panel.background = element_rect(fill = "transparent", color = NA)
+  )
+
+# fmt: skip
+ggsave("Figures/Deposit/Ore_CAPEX.png", ggplot2::last_plot(),units = 'cm', dpi = 600, width = 8.7*2, height = 10)
+
+# NOTE: continent_groups / mod_capex / coefs_CAPEX are fit earlier (see "CAPEX model" section
+# above, before the plot) so the fitted lines + R2 could be annotated on Ore_CAPEX.png.
 
 table(df$status)
 df <- df |>

@@ -37,19 +37,57 @@ ggplot(df, aes(FreshWater_m3_tonLi, fill = mine_type)) +
 # brine 7.8 m3 per kg LCE
 # spod: 42.7 m3 per kg LCE
 
-ggplot(df, aes(ore_grade, FreshWater_m3_tonLi, col = mine_type)) +
+# Decision: use full model but combine clay and hard rock
+df <- df |> mutate(model_class = if_else(mine_type %in% c("Clay", "Hard Rock"), "Hard Rock & Clay", mine_type))
+
+mod <- lm(FreshWater_m3_tonLi ~ I(1 / ore_grade):model_class - 1, data = df)
+
+water_use_intensity_fits <- tibble(term = names(coef(mod)), coef = unname(coef(mod))) |>
+  mutate(model_class = sub("^.*model_class", "", term)) |>
+  left_join(count(model.frame(mod), model_class), by = "model_class")
+
+eq_li_water <- paste0(
+  paste(
+    sprintf("%s: y = %.1f/x", water_use_intensity_fits$model_class, water_use_intensity_fits$coef),
+    collapse = "\n"
+  ),
+  "\nn = ",
+  paste(water_use_intensity_fits$n, collapse = ", "),
+  "\nR² = ",
+  sprintf("%.2f", summary(mod)$r.squared)
+)
+
+li_mine_type_colors <- c(
+  "Brine" = "#2C7FB8", # water / brine
+  "Brine - DLE" = "#41AB9C", # tech-driven brine extraction
+  "Hard Rock & Clay" = "#7F7F7F" # rock
+)
+
+ggplot(df, aes(ore_grade, FreshWater_m3_tonLi, col = model_class)) +
   geom_point(size=3) +
   geom_line(stat = "smooth", method = "lm", formula = y ~ I(1 / x) - 1, alpha = 0.7, linewidth = 1) +
+  annotate(
+    "text",
+    x = Inf,
+    y = Inf,
+    label = eq_li_water,
+    hjust = 1.02,
+    vjust = 1.1,
+    size = 10 * 5 / 14 * 0.8,
+    lineheight = 0.9,
+    colour = "black"
+  ) +
   scale_x_continuous(labels = scales::percent) +
   ylim(0, 4500) +
-  coord_cartesian(expand = F) +
+  scale_color_manual(values = li_mine_type_colors) +
+  coord_cartesian(expand = F, clip = "off") +
   labs(
     x = "Grade Ore (% Li)",
-    y = "",
-    title = expression("Freshwater consumption [" ~ m^3 * ~" per ton of Lithium]"),
+    y = expression("Freshwater consumption [" ~ m^3 * ~" per ton of Lithium]"),
+    title = NULL,
     col = "Resource type"
   ) +
-  theme_pb_wide() +
+  theme_pb_large() +
   theme(
     legend.position = c(0.7, 0.7),
     legend.background = element_blank(),
@@ -59,46 +97,6 @@ ggplot(df, aes(ore_grade, FreshWater_m3_tonLi, col = mine_type)) +
 # fmt: skip
 ggsave("Figures/Deposit/Lithium/li-water-use-intensity.png",ggplot2::last_plot(),units = 'cm',dpi = 600,width = 8.7 * 1.5,height = 8.7 * 1.5)
 
-ggplot(df, aes(mine_type, FreshWater_m3_tonLi)) + geom_boxplot() + theme_pb_wide()
-
-mod <- lm(data = df, FreshWater_m3_tonLi ~ I(1 / ore_grade):mine_type - 1)
-summary(mod) # R2 0.78
-coefficients(mod)
-
-summary(lm(data = df, FreshWater_m3_tonLi ~ I(1 / ore_grade) - 1))
-
-table(df$mine_type)
-summary(lm(data = filter(df, mine_type == "Brine"), FreshWater_m3_tonLi ~ I(1 / ore_grade) - 1))
-summary(lm(data = filter(df, mine_type == "Brine - DLE"), FreshWater_m3_tonLi ~ I(1 / ore_grade) - 1))
-summary(lm(data = filter(df, mine_type == "Hard Rock"), FreshWater_m3_tonLi ~ I(1 / ore_grade) - 1))
-summary(lm(data = filter(df, mine_type == "Clay"), FreshWater_m3_tonLi ~ I(1 / ore_grade) - 1))
-
-# Correct R2 for models with no intercept
-lm_summary_corrected <- function(data) {
-  model <- lm(FreshWater_m3_tonLi ~ I(1 / ore_grade) - 1, data = data)
-  y <- data$FreshWater_m3_tonLi
-  y_pred <- fitted(model)
-  R2_corrected <- 1 - sum((y - y_pred)^2) / sum((y - mean(y))^2)
-
-  cat("Standard lm() summary:\n")
-  print(summary(model))
-
-  cat(sprintf("R²_corrected = %.4f\n", R2_corrected))
-
-  invisible(list(model = model, R2_corrected = R2_corrected))
-}
-
-df2 <- df |> filter(!is.na(FreshWater_m3_tonLi))
-
-lm_summary_corrected(df2) # R2 0.61
-lm_summary_corrected(filter(df2, mine_type == "Brine")) # R2 0.89
-lm_summary_corrected(filter(df2, mine_type == "Brine - DLE")) # R2 -0.41
-lm_summary_corrected(filter(df2, mine_type == "Hard Rock")) # R2 -0.06
-lm_summary_corrected(filter(df2, mine_type == "Clay")) # R2 -0.55
-# negative means worse than just mean
-
-# Decision: use full model but combine clay and hard rock
-df <- df |> mutate(model_class = if_else(mine_type == "Clay", "Hard Rock", mine_type))
 
 mod <- lm(data = df, FreshWater_m3_tonLi ~ I(1 / ore_grade):model_class - 1)
 summary(mod) # R2 0.78

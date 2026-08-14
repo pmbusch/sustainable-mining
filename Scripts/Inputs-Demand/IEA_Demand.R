@@ -331,25 +331,29 @@ data_fig <- df_all |>
   ungroup() |>
   mutate(label_end = if_else(share > 0.3, Sector, ""))
 
+# Direct labels (NZE/APS/SPS) shown only on the Lithium panel, bold + descriptive names
+scen_label_lookup <- c(NZE = "Net-zero", APS = "Pledges", SPS = "Current policies")
+df_scen_label <- df |> filter(Year == 2043, Mineral == "Lithium") |> mutate(scen_label = scen_label_lookup[Scenario])
+
 ggplot(data_fig, aes(Year, ktons / 1e3)) +
   geom_area(aes(fill=Sector),col="darkgrey",linewidth=.1) +
   geom_line(data = df, aes(col = Scenario), linewidth = .7) +
-  geom_text(data=filter(df,Year==2050), aes(label=Scenario),nudge_x=.2, size=7*5/14*0.8,hjust=0) +
-  # geom_text(
-  #   data = filter(data_fig, Year == 2050),
-  #   aes(label = label_end),
-  #   nudge_x = .2,
-  #   size = 7 * 5 / 14 * 0.8,
-  #   hjust = 0,
-  #   position = position_stack(vjust = 0.5)
-  # ) +
+  geom_text(
+    data = df_scen_label,
+    aes(label = scen_label, col = Scenario),
+    hjust = 0.5,
+    fontface = "bold",
+    angle=15,
+    nudge_y=0.1,
+    size = 7 * 5 / 14 * 0.8
+  ) +
   facet_wrap(~Mineral, scales = "free") +
-  labs(y = "", title = "Metal Demand (Million tonnes)", x = "", col = "") +
+  labs(y = "Demand (million metal metric tonnes)", title = NULL, x = "", col = "") +
   scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
   scale_x_continuous(expand = expansion(mult = c(0, 0))) +
-  scale_color_manual(guide = "none", values = c("SPS" = "black", "APS" = "#E69F00", "NZE" = "#009E73")) +
+  scale_color_manual(guide = "none", values = c("NZE" = "#C44E00", "APS" = "#5E8A00", "SPS" = "#1A6FA4")) +
   scale_fill_paletteer_d("MoMAColors::Klein", name = "Sector") +
-  coord_cartesian(xlim = c(2025, 2053), ylim = c(0, NA)) +
+  coord_cartesian(xlim = c(2025, 2050), ylim = c(0, NA)) +
   theme_pb_wide() +
   theme(legend.position = "right")
 

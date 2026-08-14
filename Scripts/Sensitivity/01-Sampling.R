@@ -16,6 +16,9 @@
 #   3. Max depletion rate   (4 dims)  — one draw per primary mineral group
 #   4. Deposit-level params (varies)  — one U(0,1) quantile per
 #                                       {param x mineral x mine_type_group}
+#   5. AWARE CF draw        (1 dim)   — one U(0,1) quantile mapped to a draw index
+#                                       (0-4999) into the stochastic AWARE2.0 CF
+#                                       ensemble, applied to every basin
 #
 # Deposit-level parameters sampled: OPEX_ore, CAPEX_opening, CAPEX_exp, water
 # Mine-type groups: brine | brine_DLE | other
@@ -188,6 +191,13 @@ for (param_key in names(DEPOSIT_PARAMS)) {
   }
 }
 
+## --- 3e. AWARE characterization factor draw -----------------------------------
+#   One U(0,1) quantile, mapped in section 4 to a discrete draw index (0-4999)
+#   into the stochastic AWARE2.0 CF ensemble (Parameters/AWARE_Stochastic_CFs/).
+#   The same draw index is applied to every basin for a given sample.
+
+param_defs[["aware_draw_q"]] <- list(min = 0, max = 1)
+
 K <- length(param_defs)
 cat(sprintf("\nTotal LHS dimensions: %d\n", K))
 cat(sprintf("Sample size:          %d\n", N_SAMPLES))
@@ -214,6 +224,9 @@ for (i in seq_along(param_defs)) {
   p <- param_defs[[i]]
   sample_df[[i]] <- qunif(sobol_matrix[, i], min = p$min, max = p$max)
 }
+
+# Convert the AWARE CF Sobol quantile into a discrete draw index (0-4999)
+sample_df$aware_draw <- pmin(floor(sample_df$aware_draw_q * 5000), 4999)
 
 # Add sample ID
 sample_df <- sample_df %>% mutate(sample_id = seq_len(N_SAMPLES), .before = 1)
@@ -249,6 +262,13 @@ if (any(out_of_bounds)) {
   cat("  All values within declared bounds\n")
 }
 
+# Check aware_draw is a valid integer index into the 5000-member CF ensemble
+if (any(sample_df$aware_draw < 0 | sample_df$aware_draw > 4999)) {
+  warning("  aware_draw contains values outside [0, 4999]")
+} else {
+  cat("  aware_draw within [0, 4999]\n")
+}
+
 # Marginal distribution check: mean should be close to midpoint for each param
 cat("  Spot-check means vs midpoints (first 6 demand/recovery params):\n")
 check_cols <- head(names(param_defs), 6)
@@ -277,6 +297,7 @@ cat(sprintf(
   "  deposit quantile draws      : %d\n",
   sum(names(sample_df) %in% grep("^(opex|capex|water)_", names(sample_df), value = TRUE))
 ))
+cat(sprintf("  AWARE CF draw                : 1\n"))
 cat("\nDone.\n")
 
 # EoF
