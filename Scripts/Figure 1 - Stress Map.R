@@ -335,14 +335,14 @@ p_big /
 # fmt: skip
 ggsave("Figures/Figure1.png", ggplot2::last_plot(),units = 'cm', dpi = 1200, width = 8.7*3, height = 8.7*2)
 ggsave("Figures/Figure1.svg", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
-clean_svg("Figures/Figure1.svg")
+group_svg_layers("Figures/Figure1.svg")
 ggsave("Figures/Figure1.pdf", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
 
 # Uncomment for Fish figure (SI)
 # ggsave("Figures/ExtData-Figures/ExtFig_Fish.png", ggplot2::last_plot(), units = 'cm', dpi = 1200, width = 8.7 * 3, height = 8.7 * 2)
 # # fmt: skip
 # ggsave("Figures/ExtData-Figures/ExtFig_Fish.svg",ggplot2::last_plot(),units = 'cm',dpi = 1200,width = 8.7 * 3,height = 8.7 * 2)
-# clean_svg("Figures/ExtData-Figures/ExtFig_Fish.svg")
+# group_svg_layers("Figures/ExtData-Figures/ExtFig_Fish.svg")
 
 ## Version 2 - Facets --------
 

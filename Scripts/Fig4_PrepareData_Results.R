@@ -6,12 +6,14 @@
 #   2. Reshape to one row per sample x epsilon level
 #   3. Join with LHS sample inputs
 #   4. Reconstruct deposit real values
-#   5. Join demand per sample
+#   5. Join demand per sample and AWARE CF draw severity
 #   6. Compute derived columns (billion-unit costs, cobalt slack %)
 #   7. Save joined dataset to Results/SensitivityAnalysis/sa_results_full.csv
 #
 # Dependencies: Run Fig4_PrepareData_Demand.R first to generate
 #               Parameters/demand_per_sample.csv
+#               Run Fig4_PrepareData_AWARE_Random.R first to generate
+#               Parameters/AWARE_Stochastic_CFs/draw_summary.csv
 #
 # Author:  Pablo Busch
 # Date:    2026
@@ -266,6 +268,17 @@ cat(sprintf("  Real-value columns: %s\n", paste(real_cols_added, collapse = ", "
 data_full <- data_full |>
   left_join(demand_per_sample, by = "sample_id") |>
   mutate(slack_percent = slack_total / mineral_demand)
+
+# -----------------------------------------------------------------------------
+# 4c2. JOIN AWARE CF DRAW SEVERITY --------------------------------------------
+#
+#   aware_cf_severity is the water-weighted mean CF for the sample's drawn
+#   ensemble member — a physically meaningful stand-in for the raw aware_draw
+#   index (see Scripts/Fig4_PrepareData_AWARE_Random.R for why).
+# -----------------------------------------------------------------------------
+
+aware_draw_summary <- read_csv("Parameters/AWARE_Stochastic_CFs/draw_summary.csv", show_col_types = FALSE)
+data_full <- data_full |> left_join(aware_draw_summary, by = "aware_draw")
 
 # -----------------------------------------------------------------------------
 # 4d. COMPUTE DERIVED COLUMNS -------------------------------------------------

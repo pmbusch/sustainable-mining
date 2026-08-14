@@ -291,7 +291,6 @@ pred95 <- predict(mod, newdata = df |> dplyr::select(model_class), interval = "p
 p95 <- pred95[, "upr"]
 p50 <- pred95[, "fit"] # mean ≈ P50
 
-df |> dplyr::select(Name, country, mine_type, model_class, OPEX_source, OPEX_ore, OPEX_ore_low, OPEX_ore_high) |> view()
 
 # Fit model to rest of deposits
 df <- df |>
@@ -309,27 +308,45 @@ df <- df |>
     OPEX_ore_high = if_else(is.na(OPEX_source == "Fitted Model"), p99, OPEX_ore * 1.1)
   )
 
+# df |> dplyr::select(Name, country, mine_type, model_class, OPEX_source, OPEX_ore, OPEX_ore_low, OPEX_ore_high) |> view()
 
-data_fig <- df |> group_by(model_class) |> mutate(OPEX_avg = mean(OPEX_ore)) |> ungroup()
+# Semantic mine-type colors (reused for Li_Capex.png for consistency)
+li_mine_type_colors <- c(
+  "Brine" = "#2C7FB8", # water / brine
+  "Brine DLE" = "#41AB9C", # tech-driven brine extraction
+  "Clay" = "#C2883C", # clay / earth tone
+  "Hard Rock" = "#7F7F7F" # rock
+)
+
+data_fig <- df |>
+  group_by(model_class) |>
+  mutate(OPEX_avg = mean(OPEX_ore)) |>
+  ungroup() |>
+  mutate(model_class = str_replace(model_class, "RoW", "\n Rest of World") |> str_replace(" Developed", "\nDeveloped"))
 
 range(df$OPEX_ore)
 ggplot(data_fig, aes(x = reorder(model_class, OPEX_avg), y = OPEX_ore)) +
   geom_boxplot(aes(fill = OPEX_source), alpha = 0.8, outlier.shape = NA) +
   geom_point( data = filter(data_fig,OPEX_source == "Fitted Model"),
-  position = position_nudge(x = -0.2),aes(col=mine_type), alpha=0.6) +
+  position = position_nudge(x = -0.2),aes(col=mine_type), alpha=0.6, size = 1.8) +
   geom_point( data = filter(data_fig,OPEX_source != "Fitted Model"),
-  position = position_nudge(x = 0.2),aes(col=mine_type), alpha=0.6) +
+  position = position_nudge(x = 0.2),aes(col=mine_type), alpha=0.6, size = 1.8) +
   coord_flip(expand = F) +
   scale_y_continuous(labels = dollar_format(big.mark = " ", prefix = "$"), limits = c(0, 225)) +
   scale_fill_manual(values = c("S&P" = "#ccebc5", "Fitted Model" = "#fbb4ae")) +
-  scale_colour_viridis_d(option = "D", end = 0.9) +
-  labs(y = "OPEX\n(USD per ton ore processed or m3 brine processed)", x = "", fill = "Data Source", col = "Mine type") +
-  theme_pb_wide() +
+  scale_colour_manual(values = li_mine_type_colors) +
+  labs(
+    y = "OPEX (USD per ton ore or cubic meter of brine processed)",
+    x = "",
+    fill = "Data Source",
+    col = "Mine type"
+  ) +
+  theme_pb_large() +
   guides(fill = guide_legend(reverse = TRUE)) +
-  theme(legend.position = c(0.8, 0.2), axis.text.x = element_text(hjust = 1))
+  theme(legend.position = c(0.7, 0.2), axis.text.x = element_text(hjust = 1))
 
 # fmt: skip
-ggsave("Figures/Deposit/Lithium/Li_Opex.png", ggplot2::last_plot(),units = 'cm', dpi = 600, width = 8.7*2, height = 8.7*2)
+ggsave("Figures/Deposit/Lithium/Li_Opex.png", ggplot2::last_plot(),units = 'cm', dpi = 600, width = 8.7*2, height = 10)
 
 
 # CI Figure
@@ -401,29 +418,9 @@ capex <- df |>
   ) |>
   filter(mine_type != "Clay")
 
-p <- ggplot(capex, aes(prodK, capM, col = mine_type)) +
-  geom_point(alpha=0.7) +
-  geom_smooth(method="lm",se=F,formula="y~x") +
-  coord_cartesian(expand = F, xlim = c(0, max(capex$prodK, na.rm = T) * 1.05), ylim = c(0, max(capex$capM) * 1.05)) +
-  labs(
-    x = "Production Capacity (thousand tonnes Li/year)",
-    y = "",
-    title = "Capital Cost (million USD)",
-    col = "Resource Type"
-  ) +
-  scale_y_continuous(labels = dollar_format(big.mark = " ", prefix = "$")) +
-  # geom_segment(x = 0, xend = 50, y = 500, yend = 500, col = "black", linetype = "dashed", linewidth = 0.5) +
-  # geom_segment(x = 50, xend = 50, y = 0, yend = 500, col = "black", linetype = "dashed", linewidth = 0.5) +
-  theme_pb_wide() +
-  theme(legend.position = c(0.1, 0.8), legend.box.background = element_rect(colour = "black"))
-p
-
-# fmt: skip
-ggsave("Figures/Deposit/Lithium/Li_CAPEX.png", ggplot2::last_plot(),units = 'cm', dpi = 600, width = 8.7*2, height = 8.7*2)
-
-
 # Linear model: directly interpretable
 # Separate model per mine type
+# (fit before plotting so the fitted equation + R2 can be annotated on the figure)
 mod_capex_hr <- lm(capCost ~ ore_cap, data = filter(capex, mine_type == "Hard Rock"))
 nobs(mod_capex_hr) # 35
 summary(mod_capex_hr) # R2=0.04 # POOR FIT...
@@ -453,6 +450,60 @@ coefs_CAPEX_br <- broom::tidy(mod_capex_br) |>
     capex_p90 = estimate * 1.3
   ) |>
   dplyr::select(term, capex_est, capex_p10, capex_p90)
+
+# Equation labels for plot annotation (capM = intercept/1e3 + slope * prodK)
+# 3 line groups: fitted equations (one per mine type), then n, then R2 (matching each equation in order)
+eq_li_capex <- paste0(
+  "Hard Rock: y = ",
+  round(coefs_CAPEX_hr$capex_est[1] / 1e3, 1),
+  " + ",
+  round(coefs_CAPEX_hr$capex_est[2], 3),
+  "x\nBrine: y = ",
+  round(coefs_CAPEX_br$capex_est[1] / 1e3, 1),
+  " + ",
+  round(coefs_CAPEX_br$capex_est[2], 3),
+  "x",
+  "\nn = ",
+  nobs(mod_capex_hr),
+  " (Hard Rock), ",
+  nobs(mod_capex_br),
+  " (Brine)",
+  "\nR² = ",
+  round(summary(mod_capex_hr)$r.squared, 2),
+  " (Hard Rock), ",
+  round(summary(mod_capex_br)$r.squared, 2),
+  " (Brine)"
+)
+
+p <- ggplot(capex, aes(prodK, capM, col = mine_type)) +
+  geom_point(alpha = 0.7, size = 1.8) +
+  geom_smooth(method = "lm", se = F, formula = "y~x", linewidth = 1.3) +
+  annotate(
+    "text",
+    x = Inf,
+    y = Inf,
+    label = eq_li_capex,
+    hjust = 1.02,
+    vjust = 1.1,
+    size = 9 * 5 / 14 * 0.8,
+    lineheight = 0.9,
+    colour = "black"
+  ) +
+  coord_cartesian(expand = F, xlim = c(0, max(capex$prodK, na.rm = T) * 1.05), ylim = c(0, max(capex$capM) * 1.05)) +
+  labs(
+    x = "Production Capacity (thousand tonnes Li/year)",
+    y = "Capital cost (million USD)",
+    title = NULL,
+    col = "Resource Type"
+  ) +
+  scale_y_continuous(labels = dollar_format(big.mark = " ", prefix = "$")) +
+  scale_colour_manual(values = li_mine_type_colors) +
+  theme_pb_large() +
+  theme(legend.position = c(0.1, 0.8), legend.box.background = element_rect(colour = "black"))
+p
+
+# fmt: skip
+ggsave("Figures/Deposit/Lithium/Li_CAPEX.png", ggplot2::last_plot(),units = 'cm', dpi = 600, width = 8.7*2, height = 10)
 
 # Hard rock
 base_capex_hr_est <- coefs_CAPEX_hr$capex_est[1] / 1e3

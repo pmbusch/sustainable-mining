@@ -5,9 +5,9 @@ source('Scripts/00-Libraries.R', encoding = 'UTF-8')
 source("Scripts/00a-Common Variables.R", encoding = "UTF-8")
 
 deposits <- read_csv("Parameters/Deposit.csv")
-fish <- read_csv("Parameters/FW_FISH/FW_FISH_Basin_FishIndex_Global.csv")
+# fish <- read_csv("Parameters/FW_FISH/FW_FISH_Basin_FishIndex_Global.csv")
 
-deposits <- deposits |> filter(!is.na(Basin_ID)) |> left_join(fish, by = "Basin_ID")
+# deposits <- deposits |> filter(!is.na(Basin_ID)) |> left_join(fish, by = "Basin_ID")
 deposits$resources_ore <- deposits$resources_ore / 1e6
 
 # deposits long
@@ -21,27 +21,37 @@ deposits_long <- deposits |>
     resources_Copper,
     resources_Nickel,
     resources_Cobalt,
-    resources_Lithium
+    resources_Lithium,
+    recovery_rate_Copper,
+    recovery_rate_Nickel,
+    recovery_rate_Cobalt,
+    recovery_rate_Lithium,
+    grade_resource_Copper,
+    grade_resource_Nickel,
+    grade_resource_Cobalt,
+    grade_resource_Lithium
   ) |>
   pivot_longer(
-    c(resources_Copper, resources_Nickel, resources_Cobalt, resources_Lithium),
-    names_to = 'Mineral',
-    values_to = 'mtons'
+    cols = -c(ID, Basin_ID, country, water_footprint, fish_index),
+    names_to = c(".value", "Mineral"),
+    names_pattern = "(resources|recovery_rate|grade_resource)_(Copper|Nickel|Cobalt|Lithium)"
   ) |>
-  mutate(mtons = mtons / 1e6, Mineral = str_remove(Mineral, "resources_")) |>
-  mutate(Mineral = factor(Mineral, levels = c("Copper", "Nickel", "Cobalt", "Lithium")))
+  mutate(mtons = resources / 1e6, Mineral = str_remove(Mineral, "resources_")) |>
+  mutate(Mineral = factor(Mineral, levels = c("Copper", "Nickel", "Cobalt", "Lithium"))) |>
+  filter(grade_resource > 0 & recovery_rate > 0) |>
+  mutate(water_footprint = water_footprint / (grade_resource / 100) / recovery_rate)
 
 # Figure -----------
 ggplot(deposits_long, aes(water_footprint, fish_index, size = mtons, col = Mineral)) +
   geom_point(alpha=.8) +
-  annotate("text", x = 0.6, y = 0.001, label = "Each dot is a deposit", hjust = 1.1, vjust = -0.5, size = 3) +
+  annotate("text", x = 500, y = 0.001, label = "Each dot is a deposit", hjust = 1.1, vjust = -0.5, size = 3) +
   scale_color_manual(values = minerals_colors) +
   scale_x_log10(
     labels = function(x) {
       s <- scales::comma(x, accuracy = 0.01)
       sub("\\.$", "", sub("0+$", "", s))
     },
-    name = expression("Freshwater Impact [" ~ m^3 * ~"world-eq / ton]")
+    name = expression("Stress-weighted Water Use [" ~ m^3 * ~"-eq / ton mineral]")
   ) +
   scale_y_log10(
     labels = function(x) {
@@ -56,14 +66,14 @@ ggplot(deposits_long, aes(water_footprint, fish_index, size = mtons, col = Miner
       s <- scales::comma(x, accuracy = 0.01)
       sub("\\.$", "", sub("0+$", "", s))
     },
-    name = "Resources, million tons",
+    name = "Mineral resources [Mt]",
     trans = 'sqrt',
     breaks = c(0.1, 1, 10, 25, 50, 100, 150),
     range = c(0.3, 6)
   ) +
-  theme_pb_wide() +
+  theme_pb_large() +
   theme(
-    legend.position = c(0.9, 0.8),
+    # legend.position = c(0.9, 0.8),
     legend.background = element_blank(),
     legend.box.background = element_rect(colour = "black"),
     legend.spacing.y = unit(0.1, "cm"),
@@ -71,7 +81,11 @@ ggplot(deposits_long, aes(water_footprint, fish_index, size = mtons, col = Miner
   )
 
 # fmt: skip
-ggsave("Figures/Deposit/Aware_Fish.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 8.7*2, height = 8.7*2)
+ggsave("Figures/ExtData-Figures/Aware_Fish.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 8.7*2, height = 8.7*2)
+# fmt: skip
+ggsave("Figures/ExtData-Figures/Aware_Fish.svg", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 8.7*2, height = 8.7*2)
+group_svg_layers("Figures/ExtData-Figures/Aware_Fish.svg")
+
 
 # 2d cumulative curves -------------
 

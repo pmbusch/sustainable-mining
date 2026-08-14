@@ -104,7 +104,7 @@ data_fig <- data_fig |>
       Mineral == "Cobalt" & country %in% c("Dem. Rep. Congo", "Indonesia") ~ ISO3,
       Mineral == "Lithium" &
         country %in% c("Chile", "Dem. Rep. Congo", "Argentina", "USA", "Australia", "Brazil") ~ ISO3,
-      TRUE ~ "RoW"
+      TRUE ~ "Rest of World"
     ) |>
       str_replace("COD", "DRC")
   ) |>
@@ -134,7 +134,7 @@ region_colors <- c(
   "Europe" = "#2b8cbe",
   "MEX" = "#66c2a5",
   "KAZ" = "#8c510a",
-  "RoW" = "#4d4d4d",
+  "Rest of World" = "#4d4d4d",
   "Unmet Demand" = "#67000D80"
 )
 
@@ -148,12 +148,10 @@ order_col <- data_fig |>
   pull(order_col) |>
   unique()
 
-order_col <- c(order_col[!str_detect(order_col, "RoW")], order_col[str_detect(order_col, "RoW")])
+order_col <- c(order_col[!str_detect(order_col, "Rest of World")], order_col[str_detect(order_col, "Rest of World")])
 order_col <- c(order_col[!str_detect(order_col, "Unmet Demand")], order_col[str_detect(order_col, "Unmet Demand")])
 
 data_fig <- data_fig |> mutate(order_col = paste0(Mineral, region) |> factor(levels = rev(order_col)))
-
-write.csv(data_fig, "Figures/Data_Figures/FigProd_Demand.csv", row.names = FALSE)
 
 p_prod_demand <- ggplot(data_fig, aes(Water_Impact, total_metal, fill = region, group = order_col)) +
   geom_area(col = "black", linewidth = 0.1) +
@@ -171,9 +169,9 @@ p_prod_demand <- ggplot(data_fig, aes(Water_Impact, total_metal, fill = region, 
   scale_x_continuous(labels = ~ scales::comma(. / 1e3)) +
   coord_cartesian(expand = FALSE) +
   labs(
-    x = expression("Scarce Water Use (trillion " ~ m^3 * "-eq)"),
-    y = "Production 2025-2050 (million tons)",
-    subtitle = "Net Zero Emissions Demand Scenario"
+    x = expression("Stress-weighted Water Use (trillion " ~ m^3 * "-eq)"),
+    y = "Metal Production 2025-2050 (million metric tonnes)",
+    subtitle = "Net-zero Emissions Demand Scenario"
   ) +
   theme_pb_wide() +
   theme(legend.position = "none", panel.spacing.x = unit(1.2, "lines"))
@@ -183,6 +181,7 @@ p_prod_demand
 ggsave("Figures/ExtData-Figures/Fig_Production_Demand.png",p_prod_demand,units = "cm",dpi = 600,width = 8.7,height = 8.7)
 # fmt: skip
 ggsave("Figures/ExtData-Figures/Fig_Production_Demand.svg",p_prod_demand,units = "cm",dpi = 600,width = 8.7,height = 8.7)
+group_svg_layers("Figures/ExtData-Figures/Fig_Production_Demand.svg")
 
 
 # ============================================================
@@ -319,7 +318,7 @@ data_fig <- data_fig |>
       Mineral == "Lithium" &
         country %in%
           c("Chile", "Dem. Rep. Congo", "Argentina", "USA", "Australia", "Brazil", "Canada", "Mexico") ~ ISO3,
-      TRUE ~ "RoW"
+      TRUE ~ "Rest of World"
     ) |>
       str_replace("COD", "DRC")
   ) |>
@@ -349,7 +348,7 @@ region_colors <- c(
   "Europe" = "#2b8cbe",
   "MEX" = "#66c2a5",
   "KAZ" = "#8c510a",
-  "RoW" = "#4d4d4d",
+  "Rest of World" = "#4d4d4d",
   "Unmet Demand" = "#67000D80"
 )
 
@@ -363,12 +362,10 @@ order_col <- data_fig |>
   pull(order_col) |>
   unique()
 
-order_col <- c(order_col[!str_detect(order_col, "RoW")], order_col[str_detect(order_col, "RoW")])
+order_col <- c(order_col[!str_detect(order_col, "Rest of World")], order_col[str_detect(order_col, "Rest of World")])
 order_col <- c(order_col[!str_detect(order_col, "Unmet Demand")], order_col[str_detect(order_col, "Unmet Demand")])
 
 data_fig <- data_fig |> mutate(order_col = paste0(Mineral, region) |> factor(levels = rev(order_col)))
-
-write.csv(data_fig, "Figures/Data_Figures/FigProd_Biodiversity.csv", row.names = FALSE)
 
 p_prod_biod <- ggplot(data_fig, aes(Water_Impact, total_metal, fill = region, group = order_col)) +
   geom_area(col = "black", linewidth = 0.1) +
@@ -386,9 +383,9 @@ p_prod_biod <- ggplot(data_fig, aes(Water_Impact, total_metal, fill = region, gr
   scale_x_continuous(labels = ~ scales::comma(. / 1e3)) +
   coord_cartesian(expand = FALSE) +
   labs(
-    x = expression("Scarce Water Use (trillion " ~ m^3 * "-eq)"),
-    y = "Production 2025-2050 (million tons)",
-    subtitle = "Net Zero Emissions Demand Scenario\nIncluding only basins with Fish Index < 70"
+    x = expression("Stress-weighted Water Use (trillion " ~ m^3 * "-eq)"),
+    y = "Metal Production 2025-2050 (million metric tonnes)",
+    subtitle = "Net-zero Emissions Demand Scenario\nIncluding only basins with Fish Index < 70"
   ) +
   theme_pb_wide() +
   theme(legend.position = "none", panel.spacing.x = unit(1.2, "lines"))
@@ -398,6 +395,7 @@ p_prod_biod
 ggsave("Figures/ExtData-Figures/Fig_Production_Biodiversity.png", p_prod_biod, units = "cm", dpi = 600, width = 8.7, height = 8.7)
 # fmt: skip
 ggsave("Figures/ExtData-Figures/Fig_Production_Biodiversity.svg", p_prod_biod, units = "cm", dpi = 600, width = 8.7, height = 8.7)
+group_svg_layers("Figures/ExtData-Figures/Fig_Production_Biodiversity.svg")
 
 
 # COST DESALINATION ---------------------------------
@@ -527,7 +525,7 @@ data_fig <- data_fig |>
       Mineral == "Lithium" &
         country %in%
           c("Chile", "Dem. Rep. Congo", "Argentina", "USA", "Australia", "Brazil", "Canada", "Mexico") ~ ISO3,
-      TRUE ~ "RoW"
+      TRUE ~ "Rest of World"
     ) |>
       str_replace("COD", "DRC")
   ) |>
@@ -558,7 +556,7 @@ region_colors <- c(
   "Europe" = "#2b8cbe",
   "MEX" = "#66c2a5",
   "KAZ" = "#8c510a",
-  "RoW" = "#4d4d4d",
+  "Rest of World" = "#4d4d4d",
   "Unmet Demand" = "#67000D80"
 )
 
@@ -572,12 +570,10 @@ order_col <- data_fig |>
   pull(order_col) |>
   unique()
 
-order_col <- c(order_col[!str_detect(order_col, "RoW")], order_col[str_detect(order_col, "RoW")])
+order_col <- c(order_col[!str_detect(order_col, "Rest of World")], order_col[str_detect(order_col, "Rest of World")])
 order_col <- c(order_col[!str_detect(order_col, "Unmet Demand")], order_col[str_detect(order_col, "Unmet Demand")])
 
 data_fig <- data_fig |> mutate(order_col = paste0(Mineral, region) |> factor(levels = rev(order_col)))
-
-write.csv(data_fig, "Figures/Data_Figures/FigProd_CostDes.csv", row.names = FALSE)
 
 p_prod_CostDes <- ggplot(data_fig, aes(Water_Impact, total_metal, fill = region, group = order_col)) +
   geom_area(col = "black", linewidth = 0.1) +
