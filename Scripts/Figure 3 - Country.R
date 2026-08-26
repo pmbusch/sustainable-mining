@@ -7,6 +7,35 @@
 source('Scripts/00-Libraries.R', encoding = 'UTF-8')
 source('Scripts/00a-Common Variables.R', encoding = 'UTF-8')
 
+## Revenue metric toggle --------------
+# FALSE (default): value all contained recovered metal (original behaviour).
+# TRUE: value only metal recovered up to global per-year demand; production beyond
+# demand (e.g. co-mined byproducts riding along Cu/Ni ore) earns no revenue. The
+# optimization enforces demand only as a penalized floor with no upper bound
+# (Scripts/Optimization/Optimization_Multi.jl), so byproduct output can exceed it.
+CAP_REVENUE_AT_DEMAND <- FALSE
+
+# Ranks a (Scenario, t) group's rows by cost-per-ton of one metal and flags which
+# ones keep their production for revenue once cumulative output first reaches that
+# period's global demand - cheapest producers of a co-product monetize it first.
+keep_at_demand <- function(prod, cost_pt, dem) {
+  keep <- rep(TRUE, length(prod))
+  total_prod <- sum(prod)
+  d <- dem[1]
+  if (is.na(d) || total_prod <= d || sum(prod > 0) == 0) {
+    return(keep)
+  }
+  pos <- which(prod > 0)
+  ord <- pos[order(cost_pt[pos])]
+  cum_prod <- cumsum(prod[ord])
+  cutoff <- which(cum_prod >= d)[1]
+  if (is.na(cutoff)) {
+    cutoff <- length(ord)
+  }
+  keep[ord[-seq_len(cutoff)]] <- FALSE
+  keep
+}
+
 
 # LOAD --------------
 
@@ -99,9 +128,45 @@ optInputs <- read.csv("Results/Optimization/DemandScenario/NZE/OptimizationInput
 prices <- read.csv("Parameters/MineralPrices2025.csv") # USD per ton
 prices <- prices |> pivot_wider(names_from = Mineral, values_from = price_avg)
 
+## Demand input (for revenue-cap toggle) --------------
+# Parameters/IEA_Demand.csv is the exact file the optimization runs read (see
+# Scripts/Optimization/01-DemandScenarios.jl / 03-BiodiversityScenarios.jl /
+# 04-Desalination.jl); all 5 runs compared in this figure sit on the fixed "NZE"
+# trajectory. Copper/Nickel/Cobalt/Lithium columns are global annual demand in
+# kilotons (kt); divide by 1000 to match this script's metal quantities (Mt).
+demand_nze <- read.csv("Parameters/IEA_Demand.csv") |>
+  filter(Scenario == "NZE") |>
+  transmute(
+    t = Year,
+    dem_Copper = Copper / 1000,
+    dem_Nickel = Nickel / 1000,
+    dem_Cobalt = Cobalt / 1000,
+    dem_Lithium = Lithium / 1000
+  )
+
+# Per-deposit fixed share of revenue-value across metals (used only to rank
+# co-products for the demand-capped revenue toggle) - mirrors the revShare pattern
+# in Scripts/Fig2_PrepareData.R, but built from this script's own deposit/prices.
+revShare <- deposit |>
+  mutate(
+    copper_rev_pt = grade_resource_Copper * recovery_rate_Copper / 100 * prices$Copper,
+    nickel_rev_pt = grade_resource_Nickel * recovery_rate_Nickel / 100 * prices$Nickel,
+    cobalt_rev_pt = grade_resource_Cobalt * recovery_rate_Cobalt / 100 * prices$Cobalt,
+    lithium_rev_pt = grade_resource_Lithium * recovery_rate_Lithium / 100 * prices$Lithium,
+    total_rev_pt = copper_rev_pt + nickel_rev_pt + cobalt_rev_pt + lithium_rev_pt
+  ) |>
+  mutate(
+    copper_share = copper_rev_pt / total_rev_pt,
+    nickel_share = nickel_rev_pt / total_rev_pt,
+    cobalt_share = cobalt_rev_pt / total_rev_pt,
+    lithium_share = lithium_rev_pt / total_rev_pt
+  ) |>
+  dplyr::select(ID, copper_share, nickel_share, cobalt_share, lithium_share)
+
 
 prod <- opt_results |>
   left_join(deposit) |>
+  left_join(revShare, by = "ID") |>
   # adjust costs due to remaining life
   mutate(
     years_to_end = 2050 - t,
@@ -122,8 +187,34 @@ prod <- opt_results |>
     # substract desalinated water (no water impact)
     water_impact = ktons_extracted * water_footprint / 1e6 - water_desalinated_million_m3 * aware_cf / 1e3 # billion m3
   ) |>
+  # cap each metal's revenue-counted quantity at that period's global demand
+  # (toggle-controlled); physical copper/nickel/cobalt/lithium (Mt) above are
+  # untouched by this - only revenue is affected
+  left_join(demand_nze, by = "t") |>
   mutate(
-    revenue = (copper * prices$Copper + nickel * prices$Nickel + cobalt * prices$Cobalt + lithium * prices$Lithium) /
+    cost_pt_copper = ifelse(copper > 0, copper_share * costs / copper, NA_real_),
+    cost_pt_nickel = ifelse(nickel > 0, nickel_share * costs / nickel, NA_real_),
+    cost_pt_cobalt = ifelse(cobalt > 0, cobalt_share * costs / cobalt, NA_real_),
+    cost_pt_lithium = ifelse(lithium > 0, lithium_share * costs / lithium, NA_real_)
+  ) |>
+  group_by(Scenario, t) |>
+  mutate(
+    keep_Copper = keep_at_demand(copper, cost_pt_copper, dem_Copper),
+    keep_Nickel = keep_at_demand(nickel, cost_pt_nickel, dem_Nickel),
+    keep_Cobalt = keep_at_demand(cobalt, cost_pt_cobalt, dem_Cobalt),
+    keep_Lithium = keep_at_demand(lithium, cost_pt_lithium, dem_Lithium)
+  ) |>
+  ungroup() |>
+  mutate(
+    rev_copper = if (CAP_REVENUE_AT_DEMAND) ifelse(keep_Copper, copper, 0) else copper,
+    rev_nickel = if (CAP_REVENUE_AT_DEMAND) ifelse(keep_Nickel, nickel, 0) else nickel,
+    rev_cobalt = if (CAP_REVENUE_AT_DEMAND) ifelse(keep_Cobalt, cobalt, 0) else cobalt,
+    rev_lithium = if (CAP_REVENUE_AT_DEMAND) ifelse(keep_Lithium, lithium, 0) else lithium,
+    revenue = (rev_copper *
+      prices$Copper +
+      rev_nickel * prices$Nickel +
+      rev_cobalt * prices$Cobalt +
+      rev_lithium * prices$Lithium) /
       (1 + r)^(t - 2025), # discount revenue as well, better to have near gains than latter
   ) |>
   group_by(Scenario, country) |>
@@ -140,6 +231,68 @@ prod <- opt_results |>
   ungroup() |>
   mutate(profit = revenue) # Do revenue instead of profit (discounted)
 
+# --- 1. Balanced panel ---
+prod_bal <- prod |>
+  tidyr::complete(
+    Scenario,
+    country,
+    fill = list(Copper = 0, Nickel = 0, Cobalt = 0, Lithium = 0, water_impact = 0, costs = 0, revenue = 0, profit = 0)
+  )
+
+ref <- prod_bal |>
+  filter(Scenario == "Reference") |>
+  select(country, ref_water = water_impact, ref_revenue = revenue, ref_profit = profit)
+
+delta_bal <- prod_bal |>
+  filter(Scenario != "Reference") |>
+  left_join(ref, by = "country") |>
+  mutate(
+    delta_water = water_impact - ref_water,
+    delta_revenue = revenue - ref_revenue,
+    delta_profit = profit - ref_profit
+  )
+
+# Balancing must eliminate every NA delta (no unmatched country/scenario combination)
+stopifnot(!anyNA(delta_bal$delta_water), !anyNA(delta_bal$delta_revenue), !anyNA(delta_bal$delta_profit))
+
+# naive (your current) vs balanced world totals
+left_join(
+  prod |>
+    filter(Scenario != "Reference") |>
+    inner_join(ref, by = "country") |>
+    group_by(Scenario) |>
+    summarise(rev_naive = sum(revenue - ref_revenue), wat_naive = sum(water_impact - ref_water)),
+  delta_bal |> group_by(Scenario) |> summarise(rev_bal = sum(delta_revenue), wat_bal = sum(delta_water)),
+  by = "Scenario"
+) |>
+  mutate(bias = rev_naive - rev_bal) |>
+  as.data.frame()
+
+# countries silently dropped
+delta_bal |>
+  filter(revenue == 0, ref_revenue > 0) |>
+  group_by(Scenario) |>
+  summarise(n = n(), missed_revenue = sum(delta_revenue))
+
+
+# --- 2. Δrevenue by metal ---
+by_metal <- prod |>
+  select(Scenario, country, all_of(c("Copper", "Nickel", "Cobalt", "Lithium"))) |>
+  tidyr::pivot_longer(-c(Scenario, country), names_to = "Metal", values_to = "Mt") |>
+  mutate(
+    price = c(Copper = prices$Copper, Nickel = prices$Nickel, Cobalt = prices$Cobalt, Lithium = prices$Lithium)[Metal],
+    rev_B = Mt * price / 1e3
+  ) |>
+  group_by(Scenario, Metal) |>
+  summarise(Mt = sum(Mt), rev_B = sum(rev_B), .groups = "drop")
+
+by_metal |>
+  left_join(by_metal |> filter(Scenario == "Reference") |> select(Metal, ref_Mt = Mt, ref_rev = rev_B), by = "Metal") |>
+  filter(Scenario != "Reference") |>
+  mutate(d_Mt = Mt - ref_Mt, d_rev_B = rev_B - ref_rev) |>
+  arrange(Scenario, desc(abs(d_rev_B))) |>
+  as.data.frame()
+
 
 # GDP share --------------
 share_gdp <- read.csv("Parameters/GDP_Share_BatteryMinerals.csv")
@@ -147,18 +300,9 @@ share_gdp <- read.csv("Parameters/GDP_Share_BatteryMinerals.csv")
 # Figure ----------------------
 
 ## Cost optimal (reference) vs other scenarios ------------
-data_fig <- prod %>%
-  left_join(
-    prod %>%
-      filter(Scenario == "Reference") %>%
-      select(country, ref_water = water_impact, ref_revenue = revenue, ref_profit = profit),
-    by = "country"
-  ) %>%
-  mutate(
-    delta_water = water_impact - ref_water,
-    delta_revenue = revenue - ref_revenue,
-    delta_profit = profit - ref_profit
-  )
+# Balanced across Scenario x country and NA-asserted above, so shut-down countries
+# (zero in a constrained scenario) and new entrants (zero in Reference) both count
+data_fig <- delta_bal
 
 dict_regions <- read.csv("Inputs/Dictionaries/Dict_Countries_Fig3.csv")
 
@@ -184,9 +328,6 @@ data_fig <- data_fig |>
       T ~ "NA"
     )
   )
-
-# remove countries with zero change
-data_fig <- data_fig |> filter(abs(delta_water) > 1e-3 | abs(delta_profit) > 1e-3)
 
 data_fig <- data_fig |>
   mutate(
@@ -223,8 +364,12 @@ table(data_fig$Scenario)
 
 write.csv(data_fig, "Figures/Data_Figures/Fig3.csv", row.names = FALSE)
 
+# Tolerance filter applies only to the point/label geoms below; region_agg/global_agg
+# (regional and world arrows) sum the full data_fig above so no country is dropped
+data_fig_plot <- data_fig |> filter(abs(delta_water) > 1e-3 | abs(delta_profit) > 1e-3)
+
 # No text
-data_fig_text <- data_fig |>
+data_fig_text <- data_fig_plot |>
   filter(
     ((abs(delta_water) > 2 | abs(delta_water) > 4) & gdp_share > 0.01) | (abs(delta_water) > 3 | abs(delta_water) > 15)
   )
@@ -301,7 +446,7 @@ region_agg$Scenario <- factor(region_agg$Scenario, levels = scen_levels)
 panel_labels <- data.frame(label = c("a", "b", "c", "d"), Scenario = scen_levels)
 
 text_font <- 7
-ggplot(data_fig, aes(x = delta_water, y = delta_profit)) +
+ggplot(data_fig_plot, aes(x = delta_water, y = delta_profit)) +
   facet_wrap(~Scenario, labeller = label_parsed, ncol = 2, dir = "br") +
   geom_vline(xintercept = 0, col = "black", linewidth = 0.2) +
   # fmt: skip
@@ -494,7 +639,7 @@ scen_titles_v2 <- c(
   "Cost increase + desalination 50\u00A2/m\u00B3 +\nprotect fish biodiversity"
 )
 
-fig3 <- data_fig |> mutate(Scenario2 = factor(scen_titles_v2[as.integer(Scenario)], levels = scen_titles_v2))
+fig3 <- data_fig_plot |> mutate(Scenario2 = factor(scen_titles_v2[as.integer(Scenario)], levels = scen_titles_v2))
 region_agg2 <- region_agg |> mutate(Scenario2 = factor(scen_titles_v2[as.integer(Scenario)], levels = scen_titles_v2))
 panel_labels_v2 <- data.frame(
   label = c("a", "b", "c", "d"),
@@ -550,6 +695,8 @@ label_sets_v2 <- list(
     "Argentina",
     "China",
     "Canada",
+    "D.R.C.",
+    "Zambia",
     "New Caledonia",
     "Zimbabwe",
     "Peru",
@@ -571,6 +718,7 @@ label_sets_v2 <- list(
     "Australia",
     "Armenia",
     "Iran",
+    "Sudan",
     "Tanzania",
     "Mexico"
   ),
@@ -586,6 +734,7 @@ label_sets_v2 <- list(
     # "Zimbabwe",
     "Peru",
     "Armenia",
+    "Sudan",
     "Iran",
     "Mexico"
   )
@@ -797,8 +946,8 @@ group_svg_layers("Figures/Figure3.svg")
 
 # Option B - equal size ------------------------
 
-data_fig <- data_fig |> mutate(alpha_mapped = pmin(gdp_share, 0.30))
-p2 <- ggplot(data_fig, aes(x = delta_water, y = delta_profit)) +
+data_fig_plot <- data_fig_plot |> mutate(alpha_mapped = pmin(gdp_share, 0.30))
+p2 <- ggplot(data_fig_plot, aes(x = delta_water, y = delta_profit)) +
   facet_wrap(~Scenario, labeller = label_parsed, ncol = 2, dir = "br") +
   geom_vline(xintercept = 0, col = "black", linewidth = 0.2) +
   # fmt: skip
