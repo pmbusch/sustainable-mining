@@ -386,136 +386,148 @@ ggsave("Figures/Test_FigurePanels/Fig2_Demand.png", ggplot2::last_plot(), units 
 
 df_close_a_nze <- df_close_a |> filter(Scenario == "NZE")
 df_close_a2_nze <- df_close_a2 |> filter(Scenario == "NZE")
-df_close_a_other <- df_close_a |> filter(Scenario != "NZE")
-df_close_a2_other <- df_close_a2 |> filter(Scenario != "NZE")
 
-# Fig2a1: NZE line only — no contours, no labels, no desalination
+# Fig2a1: NZE line only — guide lines + arrows, no desalination, no other scenarios, no contours
 p_a1 <- ggplot(filter(data_fig_a, Scenario == "NZE"), aes(Water_Impact, Cost, col = Scenario)) +
-  geom_vline(xintercept = df_opt_a$Water_Impact, linetype = "dashed", col = "#999999", linewidth = 0.3) +
-  geom_hline(yintercept = df_opt_a$Cost, linetype = "dashed", col = "#999999", linewidth = 0.3) +
-  geom_line(linewidth = 1) +
-  # fmt: skip
-  annotate("segment", col = "#999999", x = 3200, y = 3150, xend = 1600, yend = 3150, arrow = arrow(length = unit(0.1, "cm"))) +
-  # fmt: skip
-  annotate("text", x = 1700, y = 3200, label = "Less water footprint", col = "#999999", size = label_text * 5 / 14 * 0.8, hjust = 0) +
-  # fmt: skip
-  annotate("segment", col = "#999999", x = 1600, y = 5600, xend = 1600, yend = 5100, arrow = arrow(length = unit(0.1, "cm"))) +
-  # fmt: skip
-  annotate("text", x = 1800, y = 5350, label = "Less cost", col = "#999999", size = label_text * 5 / 14 * 0.8, vjust = 0, angle = 90) +
-  labs(x = expression("Scarce Water Use 2025-2050 (trillion " ~ m^3 * "-eq)"), y = "Cost 2025-2050 (trillion USD)") +
-  scale_y_continuous(
-    labels = ~ paste0("$", scales::comma(. / 1e3)),
-    sec.axis = sec_axis(
-      ~ (. - df_opt_a$Cost) / df_opt_a$Cost,
-      name = "Change in Cost relative to Optimal Cost NZE (%)",
-      labels = scales::percent
-    )
+  geom_segment(
+    data = df_opt_a,
+    aes(x = Water_Impact, xend = Water_Impact, y = ylim_a_full[1], yend = Cost),
+    inherit.aes = FALSE,
+    linetype = "dashed",
+    col = "#999999",
+    linewidth = 0.3
   ) +
-  scale_x_continuous(
-    labels = ~ scales::comma(. / 1e3),
-    sec.axis = sec_axis(
-      ~ (. - df_opt_a$Water_Impact) / df_opt_a$Water_Impact,
-      name = "Change in Water Stress relative to Optimal Cost NZE (%)",
-      labels = scales::percent
-    )
+  geom_segment(
+    data = df_opt_a,
+    aes(x = xlim_a_full[1], xend = Water_Impact, y = Cost, yend = Cost),
+    inherit.aes = FALSE,
+    linetype = "dashed",
+    col = "#999999",
+    linewidth = 0.3
   ) +
+  geom_line(linewidth = 1.1) +
+  # fmt: skip
+  annotate("text", x = df_opt_a$Water_Impact - 0.02 * diff(xlim_a_full), y = df_opt_a$Cost - 0.03 * diff(ylim_a_full),
+    label = "Least cost", col = "#666666", size = label_text * 5 / 14 * 0.8, hjust = 1, vjust = 1, angle = 0) +
+  geom_text(data = df_opt_a, label = "★", col = "#666666", size = 4.5) +
+  # ARROWS
+  annotate(
+    "segment",
+    col = "black",
+    x = x_lwf + arrow_dx,
+    y = y_lwf,
+    xend = x_lwf,
+    yend = y_lwf,
+    arrow = arrow(length = unit(0.15, "cm")),
+    linewidth = 1
+  ) +
+  annotate(
+    "text",
+    x = x_lwf + arrow_dx * 1.05,
+    y = y_lwf,
+    label = "Lower water stress",
+    col = "black",
+    size = (label_text + 2) * 5 / 14 * 0.8,
+    hjust = 0
+  ) +
+  annotate(
+    "segment",
+    col = "black",
+    x = x_hc + 200,
+    y = y_hc0,
+    xend = x_hc + 200,
+    yend = y_hc0 + arrow_dy,
+    arrow = arrow(length = unit(0.15, "cm")),
+    linewidth = 1
+  ) +
+  annotate(
+    "text",
+    x = x_hc + 200 + 0.015 * diff(xlim_a_full),
+    y = y_hc0,
+    label = "Higher cost",
+    col = "black",
+    size = (label_text + 2) * 5 / 14 * 0.8,
+    angle = 0,
+    vjust = 1
+  ) +
+  labs(
+    x = expression("Stress-weighted water use 2025-2050 (trillion " ~ m^3 * "-eq)"),
+    y = "Total cost 2025-2050 ($T)",
+    col = "",
+    title = "Cost versus water stress (all materials)"
+  ) +
+  scale_y_continuous(labels = ~ paste0("$", scales::comma(. / 1e3))) +
+  scale_x_continuous(labels = ~ scales::comma(. / 1e3)) +
   scale_color_manual(values = c("NZE" = "#C44E00", "APS" = "#5E8A00", "SPS" = "#1A6FA4")) +
   guides(color = "none") +
-  coord_cartesian(
-    xlim = c(min(data_fig_a$Water_Impact) * 0.95, max(data_fig_a$Water_Impact) * 1.05),
-    ylim = c(min(data_fig_a$Cost) * 0.95, max(data_fig_a$Cost) * 1.05),
-    expand = FALSE
-  ) +
+  coord_cartesian(xlim = xlim_a_full, ylim = ylim_a_full, expand = FALSE) +
   theme_pb_large() +
-  theme(
-    legend.position = "none",
-    axis.title.y.right = element_text(size = 7, colour = "#AAAAAA"),
-    axis.text.y.right = element_text(size = 7, colour = "#AAAAAA"),
-    axis.title.x.top = element_text(size = 7, colour = "#AAAAAA"),
-    axis.text.x.top = element_text(size = 7, colour = "#AAAAAA"),
-    axis.ticks.y.right = element_line(color = "#AAAAAA"),
-    axis.ticks.x.top = element_line(color = "#AAAAAA")
-  )
+  theme(legend.position = "none", plot.title = element_text(size = 10, face = "bold", colour = "#222222", hjust = 0.5))
 
-# Fig2a2: Add desalination points and text for NZE
+# Fig2a2: Add desalination reference points/labels for NZE (Panel A style)
 p_a2 <- p_a1 +
   geom_segment(
     data = df_close_a_nze,
-    aes(
-      x = Water_Impact + 300 / desalination_cost / 2,
-      xend = df_close_a_nze$Water_Impact - 300 / desalination_cost / 2,
-      y = df_close_a_nze$Cost - 300 / 2,
-      yend = df_close_a_nze$Cost + 300 / 2
-    ),
+    aes(x = Water_Impact, y = Cost, xend = Water_Impact - 300 / desalination_cost / 2, yend = Cost + 300 / 2),
     linetype = "dashed",
-    color = "#0072B2",
-    linewidth = 0.25
+    color = "black",
+    linewidth = 0.3,
+    arrow = arrow(length = unit(0.12, "cm"), type = "closed")
   ) +
-  geom_point(data = df_close_a_nze, col = "#0072B2", size = 1) +
+  geom_point(data = df_close_a_nze, shape = 21, fill = "white", color = "black", size = 2, stroke = 0.4) +
   # fmt: skip
-  annotate("text", x = df_close_a_nze$Water_Impact + 100, y = df_close_a_nze$Cost + 20,
-    label = paste0("'$' * ", desalination_cost, " * ' per m'^3"),
-    color = "#0072B2", size = label_text * 5 / 14 * 0.8, parse = TRUE, hjust = 0) +
+  annotate("text", x = df_close_a_nze$Water_Impact, y = df_close_a_nze$Cost-200,
+    label = paste0("Desalination\n", desalination_cost * 100, "¢/m³"),
+     color = "black", size = label_text * 5 / 14 * 0.8, hjust = 0.5, angle = -30) +
   geom_segment(
     data = df_close_a2_nze,
-    aes(
-      x = Water_Impact + 300 / desalination_cost2 / 2,
-      xend = df_close_a2_nze$Water_Impact - 300 / desalination_cost2 / 2,
-      y = df_close_a2_nze$Cost - 300 / 2,
-      yend = df_close_a2_nze$Cost + 300 / 2
-    ),
+    aes(x = Water_Impact, y = Cost, xend = Water_Impact - 300 / desalination_cost2 / 2, yend = Cost + 300 / 2),
     linetype = "dashed",
-    color = "#023858",
-    linewidth = 0.25
+    color = "black",
+    linewidth = 0.3,
+    arrow = arrow(length = unit(0.12, "cm"), type = "closed")
   ) +
-  geom_point(data = df_close_a2_nze, col = "#023858", size = 1) +
+  geom_point(data = df_close_a2_nze, shape = 21, fill = "#f72f26", color = "black", size = 2, stroke = 0.4) +
   # fmt: skip
-  annotate("text", x = df_close_a2_nze$Water_Impact + 100, y = df_close_a2_nze$Cost + 20,
-    label = paste0("'$' * ", desalination_cost2, " * ' per m'^3"),
-    color = "#023858", size = label_text * 5 / 14 * 0.8, parse = TRUE, hjust = 0)
+  annotate("text", x = df_close_a2_nze$Water_Impact, y =  df_close_a2_nze$Cost-200,
+     label = paste0("Desalination\n", desalination_cost2 * 100, "¢/m³"),
+     color = "black", size = label_text * 5 / 14 * 0.8, hjust = 0.5, angle = -20)
 
-# Fig2a3: Add APS/SPS curves, desal points for remaining scenarios, and direct scenario labels
+df_close_a_other <- df_close_a |> filter(Scenario != "NZE")
+df_close_a2_other <- df_close_a2 |> filter(Scenario != "NZE")
+
+# Fig2a3: Add APS/SPS curves, desal points for remaining scenarios, scenario
+# labels, and the least-cost star — NO contour bands / colorbar
 p_a3 <- p_a2 +
-  geom_line(data = filter(data_fig_a, Scenario != "NZE"), linewidth = 0.5) +
+  geom_line(data = filter(data_fig_a, Scenario != "NZE"), linewidth = 1.1) +
   geom_segment(
     data = df_close_a_other,
-    aes(
-      x = Water_Impact + 300 / desalination_cost / 2,
-      xend = df_close_a_other$Water_Impact - 300 / desalination_cost / 2,
-      y = df_close_a_other$Cost - 300 / 2,
-      yend = df_close_a_other$Cost + 300 / 2
-    ),
+    aes(x = Water_Impact, y = Cost, xend = Water_Impact - 300 / desalination_cost / 2, yend = Cost + 300 / 2),
     linetype = "dashed",
-    color = "#0072B2",
-    linewidth = 0.25
+    color = "black",
+    linewidth = 0.3,
+    arrow = arrow(length = unit(0.12, "cm"), type = "closed")
   ) +
-  geom_point(data = df_close_a_other, col = "#0072B2", size = 1) +
+  geom_point(data = df_close_a_other, shape = 21, fill = "white", color = "black", size = 2, stroke = 0.4) +
   geom_segment(
     data = df_close_a2_other,
-    aes(
-      x = Water_Impact + 300 / desalination_cost2 / 2,
-      xend = df_close_a2_other$Water_Impact - 300 / desalination_cost2 / 2,
-      y = df_close_a2_other$Cost - 300 / 2,
-      yend = df_close_a2_other$Cost + 300 / 2
-    ),
+    aes(x = Water_Impact, y = Cost, xend = Water_Impact - 300 / desalination_cost2 / 2, yend = Cost + 300 / 2),
     linetype = "dashed",
-    color = "#023858",
-    linewidth = 0.25
+    color = "black",
+    linewidth = 0.3,
+    arrow = arrow(length = unit(0.12, "cm"), type = "closed")
   ) +
-  geom_point(data = df_close_a2_other, col = "#023858", size = 1) +
+  geom_point(data = df_close_a2_other, shape = 21, fill = "#f72f26", color = "black", size = 2, stroke = 0.4) +
   geom_text(
     data = filter(data_fig_a, metric == "0%"),
     aes(label = scen_name),
-    nudge_y = 60 * c(1.5, -2, 2),
+    nudge_y = 60 * c(1.5, 2, 2),
     nudge_x = 500 * c(-1, -2.1, -1),
-    size = label_text * 5 / 14 * 0.8,
+    size = label_text_scen * 5 / 14 * 0.8,
+    fontface = "bold",
     hjust = 0.5,
     lineheight = 0.7
-  ) +
-  # fmt: skip
-  annotate("text", x = df_opt_a$Water_Impact + 100, y = df_opt_a$Cost - 60,
-    label = "Optimal Cost", col = "#999999", size = label_text * 5 / 14 * 0.8, hjust = 1, angle = 90) +
-  geom_point(data = df_opt_a, col = "#999999", size = 0.6)
+  )
 
 # Save animation frames (png + svg)
 ggsave("Figures/Fig 2 Animation/Fig2a1.png", p_a1, units = "cm", dpi = 600, width = 9, height = 9)
