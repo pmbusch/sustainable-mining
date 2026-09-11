@@ -43,10 +43,6 @@ To regenerate them, a user with their own S&P Global license should export depos
 
 Once downloaded, all intermediate/processed files derived from these (`Parameters/FW_FISH/`, `Parameters/AWARE_Stochastic_CFs/`) regenerate automatically by re-running the corresponding scripts, and are themselves excluded from GitHub as regenerable outputs.
 
-## Pre-packaged results
-
-`Results/Optimization/*.zip` contain pre-run optimization results for users who want to reproduce the figures without re-running the model. Unzip these before running the `Figure*.R` scripts if you don't want to re-run the optimization yourself.
-
 # Instructions
 
 Users can run all the code for replication using the `sustainable-mining.Rproj` file, or by setting their own working directory and running scripts independently.
@@ -55,7 +51,7 @@ Users can run all the code for replication using the `sustainable-mining.Rproj` 
 
 Each individual optimization scenario run takes roughly 60 seconds; the full scenario sweeps take longer:
 
-* Figures reading only pre-packaged results (`Figure1_StressMap.R`, `Figure2_ParetoCurves.R`, `Figure3_Country.R`, `Figure4_VariableImportance.R`) run in a few minutes each.
+* Figures reading results (`Figure1_StressMap.R`, `Figure2_ParetoCurves.R`, `Figure3_Country.R`, `Figure4_VariableImportance.R`) run in a few minutes each.
 * Re-running the demand-scenario sweep (11 scenarios, feeds Figures 2 and 3) takes ~30 minutes.
 * Re-running the full sensitivity sweep (10,000 simulation runs, feeds Figure 4) takes several hours.
 
