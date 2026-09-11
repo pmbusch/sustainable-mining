@@ -1,0 +1,31 @@
+impact_level,display_name,importance
+<3,Copper extraction costs,0.02348361786239428
+<3,Copper recovery rate,0.13046641184390045
+<3,Lithium recovery rate,0.017666979843851308
+<3,Max production rate copper,0.0701596082163508
+<3,Mineral demand,0.10922762178120123
+<3,Ore copper water cons,0.12890202850159826
+<3,Other,0.05484364015777004
+<3,Protect fish basins,0.054254218914544475
+<3,Relocate extraction,0.2705971708845198
+<3,Water desalination available,0.14039870199386942
+3-6,Copper extraction costs,0.035361931276070804
+3-6,Copper recovery rate,0.11622932104300329
+3-6,Lithium recovery rate,0.020054358170493235
+3-6,Max production rate copper,0.046024538593916586
+3-6,Mineral demand,0.1033559807710206
+3-6,Ore copper water cons,0.14864872140353774
+3-6,Other,0.06130492844214158
+3-6,Protect fish basins,0.06092929627945336
+3-6,Relocate extraction,0.24788854776190958
+3-6,Water desalination available,0.16020237625845318
+>6,Copper extraction costs,0.0484913115474386
+>6,Copper recovery rate,0.09515823061411723
+>6,Lithium recovery rate,0.01582895295692726
+>6,Max production rate copper,0.030469658855601163
+>6,Mineral demand,0.100010394029713
+>6,Ore copper water cons,0.14430378692817245
+>6,Other,0.053306006272996656
+>6,Protect fish basins,0.07160849526338514
+>6,Relocate extraction,0.2828694856400138
+>6,Water desalination available,0.1579536778916347
