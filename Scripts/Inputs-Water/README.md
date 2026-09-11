@@ -2,7 +2,9 @@
 
 ## Overview
 
-Scripts for preparing water scarcity characterization factors (CFs) for the sustainable mining model. Integrates AWARE 2.0 baseline data with WaterGAP2-2e projections from ISIMIP3b to produce spatially-explicit, scenario-dependent CFs at basin level.
+Scripts for preparing water scarcity characterization factors (CFs) for the sustainable mining model. Integrates AWARE 2.0 baseline data with WaterGAP2-2e projections from ISIMIP3b to produce spatially-explicit, scenario-dependent CFs at basin level, plus a freshwater fish biodiversity overlap index.
+
+Some inputs used here (IUCN fish range data, AWARE Monte Carlo CFs, WaterGAP NetCDFs) are too large to include on GitHub - see the root `README.md` "Data Availability" section for download instructions before running steps 2 and 5-9.
 
 ## Workflow
 
@@ -12,22 +14,11 @@ Scripts should be run in order:
 - **`01a-Cu_Water.R`** - Processes water consumption data for copper deposits
 - **`01b-Li_Water.R`** - Processes water consumption data for lithium deposits
 
-### 2. AWARE Baseline
-- **`02-AWARE.R`** - Loads AWARE 2.0 baseline CFs, joins deposits to basins, computes deposit-level water footprints
+### 2. Fish Biodiversity
+- **`02-FishBiodiversity.R`** - Computes a basin-level freshwater fish biodiversity overlap index from IUCN species range data (requires downloading `Inputs/FW_FISH/`, see root README)
 
-### 3. WaterGAP Download
-- **`03-WaterGAP_Download.R`** - Downloads WaterGAP2-2e monthly outputs from ISIMIP for all scenarios, climate models, and variables
+### 3. AWARE Baseline
+- **`03-AWARE.R`** - Loads AWARE 2.0 baseline CFs, joins deposits to basins, computes deposit-level water footprints. Produces the master `Parameters/Deposit.csv` used by nearly every downstream figure and the optimization model.
 
-### 4. Grid-Basin Lookup
-- **`04a-Create_Grid_Basin_Lookup.R`** - Spatial intersection between WaterGAP 0.5-degree grid cells and AWARE basin polygons. Computes area-weighted overlap fractions so grid cells split across multiple basins are allocated proportionally. Run once.
-- **`04-Create_Grid_Basin_Lookup_UPSTREAM.R`** - Alternative outlet-based mapping using DDM30 stream network (not used in main pipeline)
-
-### 5. Basin Aggregation
-- **`05-WaterGAP_Basin.R`** - Loads raw .nc files for qtot and atotuse, filters 2025-2050, converts units (kg/m2/s to m3/month), and aggregates grid-level data to basin level using the overlap lookup table. Loops over each scenario x climate_model and saves per-combination intermediate CSVs.
-
-### 6. Characterization Factors
-- **`06-WaterGAP_CF.R`** - Calculates AWARE-style CFs from basin-level qtot and atotuse. Scales EWR by monthly discharge ratio, computes monthly AMD and CFs, then aggregates to yearly (CF = mean, availability and demand = sum). Outputs basin-level CFs per scenario x climate_model x year.
-
-### 7. Deposit-Level Water Scenarios
-- **`07-Deposit_WaterScenarios.R`** - Joins the deposit database (`Parameters/Deposit.csv`) with basin-level CF projections (`basin_cf_data_5yr.csv`) on Basin_ID. Pivots periods wide so each deposit keeps one row, with columns `cf_2025–2030`, `availability_m3_yr_2025–2030`, etc. Saves one file per scenario x climate_model to `Parameters/WaterScenarios/`.
-
+### 4. AWARE Monte Carlo Uncertainty
+- **`04-AWARE_Stochastic.R`** - Restructures the raw per-basin AWARE 2.0 Monte Carlo CF ensemble (requires downloading `Inputs/AWARE/Stochastic/`, see root README) into per-draw files for the sensitivity analysis.

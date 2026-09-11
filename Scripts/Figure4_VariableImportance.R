@@ -1,7 +1,7 @@
 # =============================================================================
 # Figure 4 — Variable Importance (LightGBM SHAP + Density Panels)
 #
-# Dependencies: Run Fig4_PrepareData_Results.R first to generate
+# Dependencies: Run Figure4_PrepareData_Results.R first to generate
 #               Results/SensitivityAnalysis/sa_results_full.csv
 #
 # Panels:
@@ -35,8 +35,8 @@ set.seed(25032026)
 # Feature columns: samples already includes desal and fish as 0/1 Bernoulli draws.
 # aware_draw/aware_draw_q (raw AWARE CF ensemble index, ~5000 near-unique levels,
 # no physical ordering) are dropped in favor of aware_cf_severity — a water-
-# weighted CF summary joined in Fig4_PrepareData_Results.R that actually carries
-# learnable signal for the SHAP model (see Fig4_PrepareData_AWARE_Random.R).
+# weighted CF summary joined in Figure4_PrepareData_Results.R that actually carries
+# learnable signal for the SHAP model (see Figure4_PrepareData_AWARE_Random.R).
 feature_cols <- names(samples)[names(samples) != "sample_id"]
 feature_cols <- setdiff(feature_cols, c("aware_draw", "aware_draw_q"))
 feature_cols <- c(feature_cols, "epsilon", "aware_cf_severity")

@@ -12,12 +12,7 @@ library(stringr)
 
 crs_eq <- "EPSG:6933"
 
-temp_path <- "C:/terra_temp"
-if (!dir.exists(temp_path)) {
-  dir.create(temp_path, recursive = TRUE)
-}
-
-terraOptions(memfrac = 0.8, tempdir = temp_path, progress = 1)
+terraOptions(memfrac = 0.8, tempdir = tempdir(), progress = 1)
 
 
 # ----------------------------
@@ -48,6 +43,9 @@ basin_r <- rasterize(basins_vect, r_template, field = "Basin_ID", background = N
 # Load ALL fish files together
 # ----------------------------
 
+# Not included in the GitHub repo (~6 GB). Download freshwater fish range shapefiles
+# from the IUCN Red List spatial data portal (https://www.iucnredlist.org/resources/spatial-data-download,
+# free account required) and unzip into Inputs/FW_FISH/ - see README.md "Data Availability".
 fish_files <- c(
   "Inputs/FW_FISH/FW_FISH_PART1.shp",
   "Inputs/FW_FISH/FW_FISH_PART2.shp",

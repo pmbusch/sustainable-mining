@@ -13,17 +13,19 @@ source('Scripts/00a-Common Variables.R', encoding = 'UTF-8')
 # demand (e.g. co-mined byproducts riding along Cu/Ni ore) earns no revenue. The
 # optimization enforces demand only as a penalized floor with no upper bound
 # (Scripts/Optimization/Optimization_Multi.jl), so byproduct output can exceed it.
-CAP_REVENUE_AT_DEMAND <- FALSE
+CAP_REVENUE_AT_DEMAND <- TRUE
 
-# Ranks a (Scenario, t) group's rows by cost-per-ton of one metal and flags which
-# ones keep their production for revenue once cumulative output first reaches that
-# period's global demand - cheapest producers of a co-product monetize it first.
-keep_at_demand <- function(prod, cost_pt, dem) {
-  keep <- rep(TRUE, length(prod))
-  total_prod <- sum(prod)
+# Ranks a (Scenario, t) group's rows by cost-per-ton of one metal and returns,
+# for each row, how much of its production counts toward revenue once
+# cumulative output reaches that period's global demand - cheapest producers
+# of a co-product monetize first. The row straddling the cutoff is credited
+# only its share up to demand (not its full production), so the total kept
+# is exactly min(total production, demand).
+cap_at_demand <- function(prod, cost_pt, dem) {
   d <- dem[1]
+  total_prod <- sum(prod)
   if (is.na(d) || total_prod <= d || sum(prod > 0) == 0) {
-    return(keep)
+    return(prod)
   }
   pos <- which(prod > 0)
   ord <- pos[order(cost_pt[pos])]
@@ -32,8 +34,13 @@ keep_at_demand <- function(prod, cost_pt, dem) {
   if (is.na(cutoff)) {
     cutoff <- length(ord)
   }
-  keep[ord[-seq_len(cutoff)]] <- FALSE
-  keep
+  kept <- prod
+  if (cutoff < length(ord)) {
+    kept[ord[(cutoff + 1):length(ord)]] <- 0
+  }
+  prior <- if (cutoff > 1) cum_prod[cutoff - 1] else 0
+  kept[ord[cutoff]] <- d - prior
+  kept
 }
 
 
@@ -146,7 +153,7 @@ demand_nze <- read.csv("Parameters/IEA_Demand.csv") |>
 
 # Per-deposit fixed share of revenue-value across metals (used only to rank
 # co-products for the demand-capped revenue toggle) - mirrors the revShare pattern
-# in Scripts/Fig2_PrepareData.R, but built from this script's own deposit/prices.
+# in Scripts/Figure2_PrepareData.R, but built from this script's own deposit/prices.
 revShare <- deposit |>
   mutate(
     copper_rev_pt = grade_resource_Copper * recovery_rate_Copper / 100 * prices$Copper,
@@ -191,25 +198,31 @@ prod <- opt_results |>
   # (toggle-controlled); physical copper/nickel/cobalt/lithium (Mt) above are
   # untouched by this - only revenue is affected
   left_join(demand_nze, by = "t") |>
+  # Lifetime-average cost per ton per deposit (sum costs/production across the
+  # mine's full horizon within a scenario), not a single year's - so a mine's
+  # CAPEX-heavy opening/expansion year isn't ranked as if it were permanently
+  # expensive relative to its own mature years.
+  group_by(Scenario, ID) |>
   mutate(
-    cost_pt_copper = ifelse(copper > 0, copper_share * costs / copper, NA_real_),
-    cost_pt_nickel = ifelse(nickel > 0, nickel_share * costs / nickel, NA_real_),
-    cost_pt_cobalt = ifelse(cobalt > 0, cobalt_share * costs / cobalt, NA_real_),
-    cost_pt_lithium = ifelse(lithium > 0, lithium_share * costs / lithium, NA_real_)
+    cost_pt_copper = ifelse(sum(copper) > 0, sum(copper_share * costs) / sum(copper), NA_real_),
+    cost_pt_nickel = ifelse(sum(nickel) > 0, sum(nickel_share * costs) / sum(nickel), NA_real_),
+    cost_pt_cobalt = ifelse(sum(cobalt) > 0, sum(cobalt_share * costs) / sum(cobalt), NA_real_),
+    cost_pt_lithium = ifelse(sum(lithium) > 0, sum(lithium_share * costs) / sum(lithium), NA_real_)
   ) |>
+  ungroup() |>
   group_by(Scenario, t) |>
   mutate(
-    keep_Copper = keep_at_demand(copper, cost_pt_copper, dem_Copper),
-    keep_Nickel = keep_at_demand(nickel, cost_pt_nickel, dem_Nickel),
-    keep_Cobalt = keep_at_demand(cobalt, cost_pt_cobalt, dem_Cobalt),
-    keep_Lithium = keep_at_demand(lithium, cost_pt_lithium, dem_Lithium)
+    cap_Copper = cap_at_demand(copper, cost_pt_copper, dem_Copper),
+    cap_Nickel = cap_at_demand(nickel, cost_pt_nickel, dem_Nickel),
+    cap_Cobalt = cap_at_demand(cobalt, cost_pt_cobalt, dem_Cobalt),
+    cap_Lithium = cap_at_demand(lithium, cost_pt_lithium, dem_Lithium)
   ) |>
   ungroup() |>
   mutate(
-    rev_copper = if (CAP_REVENUE_AT_DEMAND) ifelse(keep_Copper, copper, 0) else copper,
-    rev_nickel = if (CAP_REVENUE_AT_DEMAND) ifelse(keep_Nickel, nickel, 0) else nickel,
-    rev_cobalt = if (CAP_REVENUE_AT_DEMAND) ifelse(keep_Cobalt, cobalt, 0) else cobalt,
-    rev_lithium = if (CAP_REVENUE_AT_DEMAND) ifelse(keep_Lithium, lithium, 0) else lithium,
+    rev_copper = if (CAP_REVENUE_AT_DEMAND) cap_Copper else copper,
+    rev_nickel = if (CAP_REVENUE_AT_DEMAND) cap_Nickel else nickel,
+    rev_cobalt = if (CAP_REVENUE_AT_DEMAND) cap_Cobalt else cobalt,
+    rev_lithium = if (CAP_REVENUE_AT_DEMAND) cap_Lithium else lithium,
     revenue = (rev_copper *
       prices$Copper +
       rev_nickel * prices$Nickel +

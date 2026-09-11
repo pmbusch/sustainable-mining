@@ -1,0 +1,25 @@
+stress_level,display_name,importance
+Low,All other,0.09599423786401562
+Low,Avoid fish biodiversity,0.054254218914544475
+Low,Copper recovery rate,0.13046641184390045
+Low,Demand,0.10922762178120123
+Low,Desalinate,0.14039870199386942
+Low,Production rate (copper),0.0701596082163508
+Low,Relocate extraction,0.2705971708845198
+Low,Water conservation (copper),0.12890202850159826
+Mid,All other,0.11672121788870563
+Mid,Avoid fish biodiversity,0.06092929627945336
+Mid,Copper recovery rate,0.11622932104300329
+Mid,Demand,0.1033559807710206
+Mid,Desalinate,0.16020237625845318
+Mid,Production rate (copper),0.046024538593916586
+Mid,Relocate extraction,0.24788854776190958
+Mid,Water conservation (copper),0.14864872140353774
+High,All other,0.11762627077736251
+High,Avoid fish biodiversity,0.07160849526338514
+High,Copper recovery rate,0.09515823061411723
+High,Demand,0.100010394029713
+High,Desalinate,0.1579536778916347
+High,Production rate (copper),0.030469658855601163
+High,Relocate extraction,0.2828694856400138
+High,Water conservation (copper),0.14430378692817245

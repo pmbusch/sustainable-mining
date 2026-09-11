@@ -6,8 +6,8 @@
 # c-f) Mineral-level decomposition by demand scenario
 #      (Copper / Lithium / Nickel / Cobalt)
 # Note: biodiversity scenarios moved to
-#   "Scripts/SI Figures/Figure 2SI - Biodiversity.R"
-# Note: desalination cost curves in Fig2_DesalCurves.R
+#   "Scripts/SI-Figures/Figure2SI_Biodiversity.R"
+# Note: desalination cost curves in Figure2_DesalCurves.R
 # PBH Nov 2025 / Refactor Jul 2026
 # ============================================================
 
@@ -34,7 +34,7 @@ dem_tot <- demand |>
   ungroup() |>
   mutate(label_dem = paste0(Scenario, " ", round(mtons, 0), " Mt"))
 
-# Compiled in "Scripts/Fig2_PrepareData.R"
+# Compiled in "Scripts/Figure2_PrepareData.R"
 mineral_decomp_demand <- read.csv("Results/Processed/mineral_decomp_demand.csv")
 
 # ============================================================
@@ -670,6 +670,7 @@ write.csv(data_fig_cf, "Figures/Data_Figures/Fig2cf_MineralByDemandScenario.csv"
 df_opt_cf <- data_fig_cf |> filter(Scenario == "NZE", metric == "0%")
 
 cf_scen_labels <- c(NZE = "Net-zero", APS = "Pledges", SPS = "Current policies")
+scen_colors_cf <- c("NZE" = "#C44E00", "APS" = "#5E8A00", "SPS" = "#1A6FA4")
 
 ylim_cf <- list(Copper = c(2, 4), Lithium = c(13, 20), Nickel = c(5, 10), Cobalt = c(8, 12)) # $/kg
 
@@ -684,7 +685,7 @@ make_panel_cf <- function(
   opt <- filter(df_opt_cf, Mineral == mineral_name) |> mutate(Cost_kg = Cost / 1e3, Water_kg = Water / 1e3)
   mineral_col <- minerals_colors[[mineral_name]]
 
-  p <- ggplot(d, aes(Water_kg, Cost_kg, group = Scenario)) + geom_line(linewidth = 1, color = mineral_col)
+  p <- ggplot(d, aes(Water_kg, Cost_kg, group = Scenario, color = Scenario)) + geom_line(linewidth = 1)
 
   if (label_scenarios) {
     d_lab <- d |> mutate(ScenarioLabel = cf_scen_labels[Scenario])
@@ -697,7 +698,7 @@ make_panel_cf <- function(
           vjust = 0,
           size = (label_text + 2) * 5 / 14 * 0.8,
           text_only = TRUE,
-          color = mineral_col
+          color = scen_colors_cf[[scen]]
         )
     }
   }
@@ -711,6 +712,7 @@ make_panel_cf <- function(
     ) +
     scale_y_continuous(labels = dollar_format(accuracy = panel_accur_y, prefix = "$"), expand = expansion(0, 0)) +
     scale_x_continuous(labels = scales::label_comma(accuracy = panel_accur_x)) +
+    scale_color_manual(values = scen_colors_cf) +
     coord_cartesian(ylim = ylim_cf[[mineral_name]]) +
     guides(color = "none") +
     theme_pb_large() +

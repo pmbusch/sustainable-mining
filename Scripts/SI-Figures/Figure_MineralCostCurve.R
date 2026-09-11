@@ -131,21 +131,15 @@ p <- ggplot(curve_data) +
     color = "grey30",
     linewidth = 0.01
   ) +
-  # Open/Rest separator (grey dashed)
-  # geom_vline(
-  #   data = open_boundary,
-  #   aes(xintercept = boundary_x),
-  #   linetype = "dashed",
-  #   color = "grey60",
-  #   linewidth = 0.3
-  # ) +
-  # NZE cumulative demand line (black dashed) with rotated label
-  geom_vline(data = nze_demand, aes(xintercept = cum_demand), linetype = "dashed", color = "black", linewidth = 0.4) +
+  # Producing (2025) vs in-development/exploration separator (thin black solid line)
+  geom_vline(data = open_boundary, aes(xintercept = boundary_x), linetype = "solid", color = "black", linewidth = 0.3) +
+  # NZE cumulative demand line (Net-zero scenario color from Figure 2) with rotated label
+  geom_vline(data = nze_demand, aes(xintercept = cum_demand), linetype = "dashed", color = "#C44E00", linewidth = 0.4) +
   geom_text(
     data = filter(nze_demand,mineral=="Copper"),
-    aes(x = cum_demand, y = Inf, label = "NZE Demand 2025-2050"),
+    aes(x = cum_demand, y = Inf, label = "Net-Zero Demand 2025-2050"),
     angle = 90, hjust = 1.05, vjust = -0.5,
-    size = 8 * 5 / 14 * 0.8, color = "#525252", inherit.aes = FALSE
+    size = 8 * 5 / 14 * 0.8, color = "#C44E00", inherit.aes = FALSE
   ) +
   # Status labels (Lithium panel only)
   geom_text(
@@ -157,7 +151,7 @@ p <- ggplot(curve_data) +
     colours = rev(RColorBrewer::brewer.pal(8, "Spectral")),
     trans = "log10",
     labels = scales::label_comma(),
-    name = expression("Scarce Water Use [" ~ m^3 * " world-eq / ton mineral]")
+    name = expression("Stress-weighted Water Use [" ~ m^3 * " world-eq / ton mineral]")
   ) +
   scale_y_continuous(
     labels = scales::dollar_format(prefix = "$"),
@@ -182,5 +176,6 @@ p <- ggplot(curve_data) +
 ggsave("Figures/ExtData-Figures/mineral_cost_curves.png", p, units = "cm", dpi = 600, width = 18, height = 18)
 # fmt: skip
 ggsave("Figures/ExtData-Figures/mineral_cost_curves.svg", p, units = "cm", dpi = 600, width = 18, height = 18)
+group_svg_layers("Figures/ExtData-Figures/mineral_cost_curves.svg")
 
 # EoF

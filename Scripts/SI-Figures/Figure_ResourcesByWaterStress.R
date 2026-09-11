@@ -73,7 +73,7 @@ y_scales <- lapply(totals$total, function(tot) {
   scale_y_continuous(
     labels = scales::comma_format(),
     expand = c(0, 0),
-    sec.axis = sec_axis(~ . / tot * 100, name = "% of total", labels = scales::percent_format(scale = 1, accuracy = 1))
+    sec.axis = sec_axis(~ . / tot * 100, name = "Share of total (%)", labels = scales::percent_format(scale = 1, accuracy = 1))
   )
 })
 
@@ -84,7 +84,7 @@ ggplot(mineral_data_all, aes(x = water_stress, ymin = 0, ymax = cumulative_resou
   scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = c(0, 0)) +
   scale_fill_manual(values = minerals_colors) +
   labs(x = "Basin Water Stress", y = "Cumulative Resources (million tonnes)") +
-  theme_pb_wide() +
+  theme_pb_large() +
   theme(
     legend.position = "none",
     axis.title.y.right = element_text(color = "#525252"),
@@ -97,6 +97,7 @@ ggplot(mineral_data_all, aes(x = water_stress, ymin = 0, ymax = cumulative_resou
 ggsave("Figures/ExtData-Figures/Resource_WaterStress.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 8.7*2, height = 8.7*2)
 # fmt: skip
 ggsave("Figures/ExtData-Figures/Resource_WaterStress.svg",ggplot2::last_plot(),units = 'cm',dpi = 600,width = 8.7 * 2,height = 8.7 * 2)
+group_svg_layers("Figures/ExtData-Figures/Resource_WaterStress.svg")
 
 
 # FISH INDEX -----------
@@ -135,7 +136,7 @@ y_scales <- lapply(totals$total, function(tot) {
   scale_y_continuous(
     labels = scales::comma_format(),
     expand = c(0, 0),
-    sec.axis = sec_axis(~ . / tot * 100, name = "% of total", labels = scales::percent_format(scale = 1, accuracy = 1))
+    sec.axis = sec_axis(~ . / tot * 100, name = "Share of total (%)", labels = scales::percent_format(scale = 1, accuracy = 1))
   )
 })
 
@@ -145,7 +146,7 @@ ggplot(mineral_data_fish, aes(x = fish_index, ymin = 0, ymax = cumulative_resour
   facetted_pos_scales(y = y_scales) +
   scale_fill_manual(values = minerals_colors) +
   labs(x = "Fish Biodiversity Index", y = "Cumulative Resources (million tonnes)") +
-  theme_pb_wide() +
+  theme_pb_large() +
   coord_cartesian(expand = F) +
   theme(
     legend.position = "none",
@@ -159,3 +160,4 @@ ggplot(mineral_data_fish, aes(x = fish_index, ymin = 0, ymax = cumulative_resour
 ggsave("Figures/ExtData-Figures/Resource_FishIndex.png", ggplot2::last_plot(), units = 'cm', dpi = 600, width = 8.7*2, height = 8.7*2)
 # fmt: skip
 ggsave("Figures/ExtData-Figures/Resource_FishIndex.svg",ggplot2::last_plot(),units = 'cm',dpi = 600,width = 8.7 * 2,height = 8.7 * 2)
+group_svg_layers("Figures/ExtData-Figures/Resource_FishIndex.svg")

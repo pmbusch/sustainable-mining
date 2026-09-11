@@ -121,6 +121,6 @@ df <- tibble(
   ci_lower_m3_per_ton_ore = confint(mod, level = 0.95)[, 1],
   ci_upper_m3_per_ton_ore = confint(mod, level = 0.95)[, 2]
 )
-write.csv(df, "Parameters/Li_water_consumption_intensity.csv", row.names = F)
+write.csv(df, "Parameters/Li_Water_consumption_intensity.csv", row.names = F)
 
 # EoF

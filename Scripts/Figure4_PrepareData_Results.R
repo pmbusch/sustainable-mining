@@ -10,9 +10,9 @@
 #   6. Compute derived columns (billion-unit costs, cobalt slack %)
 #   7. Save joined dataset to Results/SensitivityAnalysis/sa_results_full.csv
 #
-# Dependencies: Run Fig4_PrepareData_Demand.R first to generate
+# Dependencies: Run Figure4_PrepareData_Demand.R first to generate
 #               Parameters/demand_per_sample.csv
-#               Run Fig4_PrepareData_AWARE_Random.R first to generate
+#               Run Figure4_PrepareData_AWARE_Random.R first to generate
 #               Parameters/AWARE_Stochastic_CFs/draw_summary.csv
 #
 # Author:  Pablo Busch
@@ -274,7 +274,7 @@ data_full <- data_full |>
 #
 #   aware_cf_severity is the water-weighted mean CF for the sample's drawn
 #   ensemble member — a physically meaningful stand-in for the raw aware_draw
-#   index (see Scripts/Fig4_PrepareData_AWARE_Random.R for why).
+#   index (see Scripts/Figure4_PrepareData_AWARE_Random.R for why).
 # -----------------------------------------------------------------------------
 
 aware_draw_summary <- read_csv("Parameters/AWARE_Stochastic_CFs/draw_summary.csv", show_col_types = FALSE)
